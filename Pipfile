@@ -7,6 +7,9 @@ name = "pypi"
 numpy = "*"
 scipy = "*"
 pymdptoolbox = "*"
+ipykernel = "*"
+autopep8 = "*"
+sklearn = "*"
 
 [dev-packages]
 ipykernel = "*"
