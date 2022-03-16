@@ -10,6 +10,7 @@ pymdptoolbox = "*"
 ipykernel = "*"
 autopep8 = "*"
 sklearn = "*"
+matplotlib = "*"
 
 [dev-packages]
 ipykernel = "*"
