@@ -6,17 +6,17 @@ name = "pypi"
 [packages]
 numpy = "*"
 scipy = "*"
-pymdptoolbox = "*"
 ipykernel = "*"
 autopep8 = "*"
 sklearn = "*"
 matplotlib = "*"
+pymdptoolbox = "*"
 
 [dev-packages]
 ipykernel = "*"
 
 [requires]
-python_version = "3.8"
+python_version = "3"
 
 [pipenv]
 allow_prereleases = true
