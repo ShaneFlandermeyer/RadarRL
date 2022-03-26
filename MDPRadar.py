@@ -11,7 +11,7 @@ import itertools
 from sklearn.preprocessing import normalize
 import matplotlib.pyplot as plt
 from matplotlib import animation
-
+from abc import ABC, abstractmethod
 
 # %% [markdown]
 #   ## Radar Environment
@@ -47,6 +47,8 @@ from matplotlib import animation
 #
 
 # %%
+
+
 class Radar:
     """Monostatic radar object"""
 
@@ -80,8 +82,8 @@ class Radar:
         noise_power = sc.k*self.T0*self.samp_rate*self.noise_fig
         # Interference power only contributes to SINR if it is in the same
         # frequency band
-        if sum(self.action*interference.state) > 0:
-            interference_power = interference.inr*noise_power
+        if sum(self.action*interference.current_state) > 0:
+            interference_power = interference.tx_power
         else:
             interference_power = 0
         sinr = self.rx_power(target) / (noise_power + interference_power)
@@ -104,53 +106,99 @@ class Target:
     """Point target object"""
 
     def __init__(self, position, velocity, rcs):
+        """Instantiate a target object
+
+        Args:
+            position (ndarray): A vector of the XYZ position of the target in an
+            arbitrary coordinate system
+            velocity (ndarray): A vector of the XYZ velocity of the target in an
+            arbitrary coordinate system
+            rcs (float): The radar cross section of the target (m^2) 
+        """
         self.position = np.array(position)
         self.velocity = np.array(velocity)
         self.rcs = rcs
 
     def step(self, dt):
+        """Update the target motion profile
+
+        Args:
+            dt (float): Time change since last step
+        """
         self.position += self.velocity*dt
 
-# TODO: Do better inheritance here
 
+class Interference(ABC):
+    """Interference object base class"""
 
-class ConstantInterference:
-    """Constant interference object"""
+    def __init__(self, tx_power, states, state_ind):
+        """Instantiate a new interference object
 
-    def __init__(self, inr=14, states=np.array([]), state_ind=0):
-        # ConstantInterference-to-noise ratio at the radar receiver. To simplify the
-        # scenario, this is position-independent
-        self.inr = inr
+        Args:
+            tx_power (float): Transmit power of the interference AT THE RADAR RECEIVER.
+            Therefore, this is a very small value.
+            TODO: Make this the actual transmitted power, then use scenario
+            geometry to compute the power at the radar receiver. 
+
+            states (_type_, optional): A matrix of all possible transmission
+            frequencies in a discretized spectrum, where each row is a possible
+            state. 
+            Defaults to np.array([]).
+
+            state_ind (int, optional): The row index of the current state in the
+            states matrix.
+            Defaults to 0.
+        """
+        self.tx_power = tx_power
         self.states = states
         self.state_ind = state_ind
-        self.state = states[state_ind]
+        self.current_state = states[state_ind]
 
-    # Define frequency-hopping behavior
+    @abstractmethod
     def step(self):
-        # Do nothing
-        self.state_ind = self.state_ind
-        self.state = self.states[self.state_ind]
+        """ 
+        Define the frequency hopping behavior of the interference at each time step
+        """
+        pass
 
 
-class PulsedInterference:
+class ConstantInterference(Interference):
+    """Constant interference object.
+
+    This interferer transmits at a single frequency pattern for the entire simulation
+
+    Args:
+        Interference: Abstract interference parent class
     """
-    Interference that turns on and off every iteration, but stays in the same
-    frequency band
-    """
 
-    def __init__(self, inr=14, states=np.array([]), state_ind=0):
-        # ConstantInterference-to-noise ratio at the radar receiver. To simplify the
-        # scenario, this is position-independent
-        self.inr = inr
-        self.states = states
-        self.state_ind = state_ind
-        self.state = states[state_ind]
+    def __init__(self, tx_power=0, states=np.array([]), state_ind=0):
+        super(ConstantInterference, self).__init__(tx_power, states, state_ind)
 
     def step(self):
-        if np.sum(self.state) == 0:
-            self.state = self.states[self.state_ind]
-        else:
-            self.state = self.states[0]
+        """
+        Continue transmitting at the same frequency
+        """
+        pass
+
+# class PulsedInterference:
+#     """
+#     Interference that turns on and off every iteration, but stays in the same
+#     frequency band
+#     """
+
+#     def __init__(self, inr=14, states=np.array([]), state_ind=0):
+#         # ConstantInterference-to-noise ratio at the radar receiver. To simplify the
+#         # scenario, this is position-independent
+#         self.inr = inr
+#         self.states = states
+#         self.state_ind = state_ind
+#         self.state = states[state_ind]
+
+#     def step(self):
+#         if np.sum(self.state) == 0:
+#             self.state = self.states[self.state_ind]
+#         else:
+#             self.state = self.states[0]
 
 
 # %% [markdown]
@@ -166,8 +214,8 @@ channel = np.zeros((N,))
 Theta = np.array(list(itertools.product([0, 1], repeat=N)))
 # Interfering system
 interference_state = 1
-comms = PulsedInterference(
-    inr=10**(14/10), states=Theta, state_ind=interference_state)
+comms = ConstantInterference(
+    tx_power=4.6e-13, states=Theta, state_ind=interference_state)
 
 
 # %% [markdown]
@@ -202,13 +250,7 @@ target = Target(position=[], velocity=[], rcs=0.1)
 #   ### Reward structure
 #
 
-# %% [markdown]
-#   Use the reward function defined in table 2 of Selvi2020
-#
-
 # %%
-
-
 def reward(sinr, bw):
     r = 0
     # SINR reward structure
@@ -246,7 +288,7 @@ def animate_spectrum(tx, int):
 
     def animate(i):
         action = tx[i, :]
-        int_state = int[i,:]
+        int_state = int[i, :]
         for ibin in range(len(radar_spectrum.patches)):
             # Get the histogram bin object
             bin = radar_spectrum.patches[ibin]
@@ -265,7 +307,8 @@ def animate_spectrum(tx, int):
         return radar_spectrum.patches
 
     fig, ax = plt.subplots()
-    interference = plt.bar(range(N), np.ones((N,)), width=1, edgecolor='k', color='g')
+    interference = plt.bar(range(N), np.ones(
+        (N,)), width=1, edgecolor='k', color='g')
     radar_spectrum = plt.bar(
         range(N), np.ones((N,)), width=1, edgecolor='k', color='b')
     anim = animation.FuncAnimation(
@@ -309,10 +352,11 @@ for itrain in range(num_train):
 
     for t in time:
         # Calculate the initial state
-        pos_state_i = np.digitize(target.position, r)-1
-        vel_state_i = np.digitize(target.velocity, v)-1
-        int_state_i = comms.state_ind
-        state_i = pos_state_i*nu*(2**N) + vel_state_i*(2**N) + int_state_i
+        old_pos_state = np.digitize(target.position, r)-1
+        old_vel_state = np.digitize(target.velocity, v)-1
+        old_interference_state = comms.state_ind
+        old_state = old_pos_state*nu * \
+            (2**N) + old_vel_state*(2**N) + old_interference_state
         # Randomly select a valid action
         action_index = np.random.randint(0, A)
         radar.action = actions[action_index, :]
@@ -322,13 +366,15 @@ for itrain in range(num_train):
         target.step(dt)
         sinr = radar.SINR(target, comms, wave)
         # Determine the new state
-        pos_state_f = np.digitize(target.position, r)-1
-        vel_state_f = np.digitize(target.velocity, v)-1
-        int_state_f = comms.state_ind
-        state_f = pos_state_f*nu*(2**N) + vel_state_f*(2**N) + int_state_f
+        new_pos_state = np.digitize(target.position, r)-1
+        new_vel_state = np.digitize(target.velocity, v)-1
+        new_interference_state = comms.state_ind
+        new_state = new_pos_state*nu * \
+            (2**N) + new_vel_state*(2**N) + new_interference_state
         # Update the transition and reward matrices
-        T[action_index, state_i, state_f] += 1
-        R[action_index, state_i, state_f] += reward(sinr, np.sum(radar.action))
+        T[action_index, old_state, new_state] += 1
+        R[action_index, old_state,
+            new_state] += reward(sinr, np.sum(radar.action))
 # Normalize the transition probability matrix to make it stochastic
 T = np.array([normalize(T[a], axis=1, norm='l1') for a in range(A)])
 # Also need to add a 1 to the diagonals of the matrices where the probability is zero
@@ -358,19 +404,21 @@ for itest in range(num_test):
     # Add a gaussian perturbance to the position and velocity
     target.position += np.random.randn()
     target.velocity += np.random.randn()
-    tx = np.zeros((1, N))
-    int_state = np.zeros((1, N))
+    tx_history = np.empty((0, N))
+    interference_history = np.zeros((0, N))
     for itime in range(time.shape[0]):
         # Calculate the initial state
-        pos_state_i = np.digitize(target.position, r)-1
-        vel_state_i = np.digitize(target.velocity, v)-1
-        int_state_i = comms.state_ind
-        int_state = np.append(int_state, np.reshape(
-            comms.state, (1, N)), axis=0)
-        state_i = pos_state_i*nu*(2**N) + vel_state_i*(2**N) + int_state_i
+        old_pos_state = np.digitize(target.position, r)-1
+        old_vel_state = np.digitize(target.velocity, v)-1
+        old_interference_state = comms.state_ind
+        interference_history = np.append(interference_history, np.reshape(
+            comms.current_state, (1, N)), axis=0)
+        old_state = old_pos_state*nu * \
+            (2**N) + old_vel_state*(2**N) + old_interference_state
         # Select an action from the policy
-        radar.action = actions[pi.policy[state_i], :]
-        tx = np.append(tx, np.reshape(radar.action, (1, N)), axis=0)
+        radar.action = actions[pi.policy[old_state], :]
+        tx_history = np.append(tx_history, np.reshape(
+            radar.action, (1, N)), axis=0)
 
         # Determine the bandwidth used, then update the interference, position, range, and SINR
         wave.bandwidth = subband_bw*np.sum(radar.action)
@@ -382,12 +430,11 @@ for itest in range(num_test):
             current_reward[itime, itest] = current_reward[itime -
                                                           1, itest] + reward(sinr, np.sum(radar.action))
         # Determine the new state
-        pos_state_f = np.digitize(target.position, r)-1
-        vel_state_f = np.digitize(target.velocity, v)-1
-        int_state_f = comms.state_ind
-        state_f = pos_state_f*nu*(2**N) + vel_state_f*(2**N) + int_state_f
-    tx = tx[1:, :]
-    int_state = int_state[1:, :]
+        new_pos_state = np.digitize(target.position, r)-1
+        new_vel_state = np.digitize(target.velocity, v)-1
+        new_interference_state = comms.state_ind
+        new_state = new_pos_state*nu * \
+            (2**N) + new_vel_state*(2**N) + new_interference_state
 current_reward = np.mean(current_reward, axis=1)
 current_sinr = np.mean(current_sinr, axis=1)
 
@@ -404,8 +451,6 @@ plt.plot(time, current_sinr, '.-')
 plt.xlabel('Time (s)')
 plt.ylabel('Average SINR (dB)')
 plt.savefig('SINR')
+animate_spectrum(tx_history, interference_history)
 
-# %% [markdown]
-# ## Playground
 # %%
-animate_spectrum(tx, int_state)
