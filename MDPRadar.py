@@ -59,7 +59,7 @@ Theta = np.array(list(itertools.product([0, 1], repeat=N)))
 # Interfering system
 interference_state = 1
 comms = IntermittentInterference(
-    tx_power=4.6e-13, states=Theta, state_ind=interference_state)
+    tx_power=4.6e-13, states=Theta, state_ind=interference_state, transition_prob=0.9)
 
 
 # %% [markdown]
@@ -95,32 +95,49 @@ target = Target(position=[], velocity=[], rcs=0.1)
 
 # %%
 
+# TODO: Formulate a reward structure in terms of collisions and missed
+# opportunities
+def reward(radar_state, interference_state):
+    r = 0
+    # Number of collisions with the interference
+    num_collision = np.sum(radar_state == interference_state)
+    # Number of sub-bands utilized by the radar
+    num_subband = np.sum(radar_state)
+    # Number of missed opportunities for radar transmission, where no
+    # interference exists but the radar did not transmit there
+    num_missed_opportunity = np.sum((radar_state ==0) & (interference_state == 0))
 
-def reward(sinr, bw):
-    r = 0
-    # SINR reward structure
-    if sinr < 0:
-        r -= 35
-    elif sinr >= 0 and sinr <= 2:
-        r += 1
-    elif sinr > 2 and sinr <= 5:
-        r += 2
-    elif sinr > 5 and sinr <= 8:
-        r += 3
-    elif sinr > 8 and sinr <= 11:
-        r += 4
-    elif sinr > 11 and sinr <= 14:
-        r += 5
-    elif sinr > 14 and sinr <= 17:
-        r += 6
-    elif sinr > 17 and sinr <= 20:
-        r += 8
+    if (num_collision > 0):
+        r += -45*num_collision
     else:
-        r += 10
-    r = 0
-    # Bandwidth reward structure
-    r += 10*(bw-1)
+        r += 10*(num_subband-1)
     return r
+
+    # TODO: Penalize rapid waveform changes
+# def reward(sinr, bw):
+#     r = 0
+#     # SINR reward structure
+#     if sinr < 0:
+#         r -= 35
+#     elif sinr >= 0 and sinr <= 2:
+#         r += 1
+#     elif sinr > 2 and sinr <= 5:
+#         r += 2
+#     elif sinr > 5 and sinr <= 8:
+#         r += 3
+#     elif sinr > 8 and sinr <= 11:
+#         r += 4
+#     elif sinr > 11 and sinr <= 14:
+#         r += 5
+#     elif sinr > 14 and sinr <= 17:
+#         r += 6
+#     elif sinr > 17 and sinr <= 20:
+#         r += 8
+#     else:
+#         r += 10
+#     # Bandwidth reward structure
+#     r += 10*(bw-1)
+#     return r
 
 # %% Show the spectrum as a function of time
 
@@ -221,7 +238,7 @@ for itrain in range(num_train):
         # Update the transition and reward matrices
         T[action_index, old_state, new_state] += 1
         R[action_index, old_state,
-            new_state] += reward(sinr, np.sum(radar.action))
+            new_state] += reward(radar.action, comms.current_state)
 # Normalize the transition probability matrix to make it stochastic
 T = np.array([normalize(T[a], axis=1, norm='l1') for a in range(A)])
 # Also need to add a 1 to the diagonals of the matrices where the probability is zero
@@ -250,7 +267,7 @@ for itest in range(num_test):
     target.velocity = np.random.rand()*(max(v)-min(v)) + min(v)
 
     tx_history = np.empty((0, N))
-    interference_history = np.zeros((0, N))
+    interference_history = np.empty((0, N))
     for itime in range(time.shape[0]):
         # Calculate the initial state
         old_pos_state = np.digitize(target.position, r)-1
