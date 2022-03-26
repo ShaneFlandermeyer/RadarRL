@@ -1,6 +1,6 @@
 # %% [markdown]
 #   # Final Project
-# 
+#
 
 # %%
 import mdptoolbox
@@ -10,41 +10,41 @@ import scipy.constants as sc
 import itertools
 from sklearn.preprocessing import normalize
 import matplotlib.pyplot as plt
-
+from matplotlib import animation
 
 
 # %% [markdown]
 #   ## Radar Environment
-# 
+#
 
 # %% [markdown]
 #   The radar environment is defined by a set of possible postion states
 #   $\mathcal{P}$ and a set of velocity states $\mathcal{V}$.
-# 
+#
 #   $\mathcal{P} = \{\mathbf{r_1}, \mathbf{r_2}, \dots, \mathbf{r_\rho}\}$
-# 
+#
 #   $\mathcal{V} = \{\mathbf{v_1}, \mathbf{v_2}, \dots, \mathbf{v_\nu}\}$
-# 
+#
 #   where $\rho$ is the number of possible position states and $\nu$ is the number
 #   of possible velocities.
-# 
+#
 #   Each $\mathbf{r_i}, \mathbf{v_i}$ are 3-dimensional row vectors
-# 
+#
 #   $\mathbf{r_i} = \left[r_x, r_y, r_z \right]$
-# 
+#
 #   $\mathbf{v_i} = \left[v_x, v_y, v_z \right]$
-# 
+#
 #   where x, y and z represent the cross-range, down-range, and vertical dimensions,
 #   respectively.
-# 
+#
 
 # %% [markdown]
 #   For this simple script, only 1D range and velocity will be considered.
-# 
+#
 
 # %% [markdown]
 #   ## Simulation Objects
-# 
+#
 
 # %%
 class Radar:
@@ -111,6 +111,8 @@ class Target:
     def step(self, dt):
         self.position += self.velocity*dt
 
+# TODO: Do better inheritance here
+
 
 class ConstantInterference:
     """Constant interference object"""
@@ -130,11 +132,30 @@ class ConstantInterference:
         self.state = self.states[self.state_ind]
 
 
+class PulsedInterference:
+    """
+    Interference that turns on and off every iteration, but stays in the same
+    frequency band
+    """
+
+    def __init__(self, inr=14, states=np.array([]), state_ind=0):
+        # ConstantInterference-to-noise ratio at the radar receiver. To simplify the
+        # scenario, this is position-independent
+        self.inr = inr
+        self.states = states
+        self.state_ind = state_ind
+        self.state = states[state_ind]
+
+    def step(self):
+        if np.sum(self.state) == 0:
+            self.state = self.states[self.state_ind]
+        else:
+            self.state = self.states[0]
+
 
 # %% [markdown]
 #   ### Interference Environment
-# 
-
+#
 # %%
 N = 5
 channel_bw = 100e6
@@ -144,10 +165,9 @@ channel = np.zeros((N,))
 # each column is a frequency bin
 Theta = np.array(list(itertools.product([0, 1], repeat=N)))
 # Interfering system
-interference_state = 8
-comms = ConstantInterference(
+interference_state = 1
+comms = PulsedInterference(
     inr=10**(14/10), states=Theta, state_ind=interference_state)
-
 
 
 # %% [markdown]
@@ -171,7 +191,8 @@ for i in range(N):
                                            range(N-i)]), axis=0)
 # Number of position states
 rho = 10
-r = np.linspace(0, radar.max_range, rho)
+# r = np.linspace(0, radar.max_range, rho)
+r = np.linspace(0, 2e3, rho)
 # Number of velocity states
 nu = 10
 v = np.linspace(-1/2, 1/2, nu) * (radar.prf*radar.lambda0/2)
@@ -179,13 +200,15 @@ target = Target(position=[], velocity=[], rcs=0.1)
 
 # %% [markdown]
 #   ### Reward structure
-# 
+#
 
 # %% [markdown]
 #   Use the reward function defined in table 2 of Selvi2020
-# 
+#
 
 # %%
+
+
 def reward(sinr, bw):
     r = 0
     # SINR reward structure
@@ -212,11 +235,47 @@ def reward(sinr, bw):
     r += 10*(bw-1)
     return r
 
+# %% Show the spectrum as a function of time
+
+
+def animate_spectrum(tx, int):
+    # tx: array of radar transmission actions, where each row is the spectrum
+    # state for a test run
+    # int: Array of interference states with the same shape as for the transmission
+    A = actions.shape[0]
+
+    def animate(i):
+        action = tx[i, :]
+        int_state = int[i,:]
+        for ibin in range(len(radar_spectrum.patches)):
+            # Get the histogram bin object
+            bin = radar_spectrum.patches[ibin]
+            int_bin = interference.patches[ibin]
+            # Set the height of each bin
+            bin.set_height(action[ibin])
+            int_bin.set_height(int_state[ibin])
+            # Set the color of each bin based on whether or not a collision exists
+            if action[ibin] == int_state[ibin]:
+                bin.set_color('r')
+                int_bin.set_color('r')
+            else:
+                bin.set_color('b')
+                int_bin.set_color('g')
+
+        return radar_spectrum.patches
+
+    fig, ax = plt.subplots()
+    interference = plt.bar(range(N), np.ones((N,)), width=1, edgecolor='k', color='g')
+    radar_spectrum = plt.bar(
+        range(N), np.ones((N,)), width=1, edgecolor='k', color='b')
+    anim = animation.FuncAnimation(
+        fig, animate, tx.shape[0], repeat=False, blit=True)
+    # plt.show()
+    anim.save('test.mp4')
 
 
 # %% [markdown]
 #   ## Train the MDP
-
 # %%
 # Number of possible states
 # For this simulation, the set of possible states denotes all possible
@@ -282,14 +341,15 @@ for a in range(A):
 # Use policy iteration to determine the optimal policy
 pi = mdptoolbox.mdp.PolicyIteration(T, R, 0.9)
 pi.run()
-# print(pi.policy)
+
 
 # %% [markdown]
 # ## Test the MDP
 
 # %%
-current_reward = np.zeros((time.shape[0],num_test))
-current_sinr = np.zeros((time.shape[0],num_test))
+
+current_reward = np.zeros((time.shape[0], num_test))
+current_sinr = np.zeros((time.shape[0], num_test))
 for itest in range(num_test):
     # Select a NEW trajectory that was not used for training
     # Randomly select a starting position and target velocity
@@ -298,40 +358,54 @@ for itest in range(num_test):
     # Add a gaussian perturbance to the position and velocity
     target.position += np.random.randn()
     target.velocity += np.random.randn()
+    tx = np.zeros((1, N))
+    int_state = np.zeros((1, N))
     for itime in range(time.shape[0]):
         # Calculate the initial state
         pos_state_i = np.digitize(target.position, r)-1
         vel_state_i = np.digitize(target.velocity, v)-1
         int_state_i = comms.state_ind
+        int_state = np.append(int_state, np.reshape(
+            comms.state, (1, N)), axis=0)
         state_i = pos_state_i*nu*(2**N) + vel_state_i*(2**N) + int_state_i
         # Select an action from the policy
         radar.action = actions[pi.policy[state_i], :]
+        tx = np.append(tx, np.reshape(radar.action, (1, N)), axis=0)
+
         # Determine the bandwidth used, then update the interference, position, range, and SINR
         wave.bandwidth = subband_bw*np.sum(radar.action)
         comms.step()
         target.step(dt)
         sinr = radar.SINR(target, comms, wave)
-        current_sinr[itime,itest] = sinr
+        current_sinr[itime, itest] = sinr
         if itime > 0:
-          current_reward[itime,itest] = current_reward[itime-1,itest] + reward(sinr, np.sum(radar.action))
+            current_reward[itime, itest] = current_reward[itime -
+                                                          1, itest] + reward(sinr, np.sum(radar.action))
         # Determine the new state
         pos_state_f = np.digitize(target.position, r)-1
         vel_state_f = np.digitize(target.velocity, v)-1
         int_state_f = comms.state_ind
         state_f = pos_state_f*nu*(2**N) + vel_state_f*(2**N) + int_state_f
+    tx = tx[1:, :]
+    int_state = int_state[1:, :]
 current_reward = np.mean(current_reward, axis=1)
-current_sinr = np.mean(current_sinr,axis=1)
+current_sinr = np.mean(current_sinr, axis=1)
 
 
 # %% [markdown]
 # ## Visualizations
 plt.figure()
-plt.plot(time,current_reward, '.-')
+plt.plot(time, current_reward, '.-')
 plt.xlabel('Time (s)')
 plt.ylabel('Average Cumulative Reward')
 
 plt.figure()
-plt.plot(time,current_sinr, '.-')
+plt.plot(time, current_sinr, '.-')
 plt.xlabel('Time (s)')
 plt.ylabel('Average SINR (dB)')
+plt.savefig('SINR')
+
+# %% [markdown]
+# ## Playground
 # %%
+animate_spectrum(tx, int_state)
