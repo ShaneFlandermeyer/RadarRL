@@ -1,6 +1,7 @@
 import numpy as np
 from abc import ABC, abstractmethod
 
+
 class Interference(ABC):
     """Interference object base class"""
 
@@ -53,22 +54,28 @@ class ConstantInterference(Interference):
         """
         pass
 
-# class PulsedInterference:
-#     """
-#     Interference that turns on and off every iteration, but stays in the same
-#     frequency band
-#     """
 
-#     def __init__(self, inr=14, states=np.array([]), state_ind=0):
-#         # ConstantInterference-to-noise ratio at the radar receiver. To simplify the
-#         # scenario, this is position-independent
-#         self.inr = inr
-#         self.states = states
-#         self.state_ind = state_ind
-#         self.state = states[state_ind]
+class IntermittentInterference(Interference):
+    """Time-intermittent interference object.
 
-#     def step(self):
-#         if np.sum(self.state) == 0:
-#             self.state = self.states[self.state_ind]
-#         else:
-#             self.state = self.states[0]
+    This interference transmits in a single pre-defined frequency band, but
+    toggles on and off with a user-defined probability at every time step.
+
+    Args:
+        Interference: Abstract interference parent class
+    """
+
+    def __init__(self, tx_power=0, states=np.array([]), state_ind=0, transition_prob=0.1):
+        super(IntermittentInterference, self).__init__(tx_power, states, state_ind)
+        self.transition_prob = transition_prob
+        self.transition_prob = transition_prob
+        self.on = 1
+
+    def step(self):
+        """
+        Transition on/off with a constant probability
+        """
+        if np.random.rand() < self.transition_prob:
+            self.on = not self.on
+        # Determine the state based on the transition probability
+        self.current_state = self.states[self.state_ind] * int(self.on)

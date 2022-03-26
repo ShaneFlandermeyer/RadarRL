@@ -50,7 +50,7 @@ from target import *
 #
 # %%
 N = 5
-channel_bw = 100e6
+channel_bw = 200e6
 subband_bw = channel_bw / N
 channel = np.zeros((N,))
 # Matrix of all unique interference states, where each row is a unique state and
@@ -58,7 +58,7 @@ channel = np.zeros((N,))
 Theta = np.array(list(itertools.product([0, 1], repeat=N)))
 # Interfering system
 interference_state = 1
-comms = ConstantInterference(
+comms = IntermittentInterference(
     tx_power=4.6e-13, states=Theta, state_ind=interference_state)
 
 
@@ -82,9 +82,8 @@ for i in range(N):
     actions = np.append(actions, np.array([np.roll(state, j) for j in
                                            range(N-i)]), axis=0)
 # Number of position states
-rho = 10
-# r = np.linspace(0, radar.max_range, rho)
-r = np.linspace(0, 2e3, rho)
+rho = 25
+r = np.linspace(4e3, 6e3, rho)
 # Number of velocity states
 nu = 10
 v = np.linspace(-1/2, 1/2, nu) * (radar.prf*radar.lambda0/2)
@@ -95,6 +94,8 @@ target = Target(position=[], velocity=[], rcs=0.1)
 #
 
 # %%
+
+
 def reward(sinr, bw):
     r = 0
     # SINR reward structure
@@ -116,7 +117,7 @@ def reward(sinr, bw):
         r += 8
     else:
         r += 10
-
+    r = 0
     # Bandwidth reward structure
     r += 10*(bw-1)
     return r
@@ -124,24 +125,23 @@ def reward(sinr, bw):
 # %% Show the spectrum as a function of time
 
 
-def animate_spectrum(tx, int):
+def animate_spectrum(tx_history, interference_history):
     # tx: array of radar transmission actions, where each row is the spectrum
     # state for a test run
     # int: Array of interference states with the same shape as for the transmission
-    A = actions.shape[0]
 
     def animate(i):
-        action = tx[i, :]
-        int_state = int[i, :]
+        radar_action = tx_history[i, :]
+        interference_state = interference_history[i, :]
         for ibin in range(len(radar_spectrum.patches)):
             # Get the histogram bin object
             bin = radar_spectrum.patches[ibin]
             int_bin = interference.patches[ibin]
             # Set the height of each bin
-            bin.set_height(action[ibin])
-            int_bin.set_height(int_state[ibin])
+            bin.set_height(radar_action[ibin])
+            int_bin.set_height(interference_state[ibin])
             # Set the color of each bin based on whether or not a collision exists
-            if action[ibin] == int_state[ibin]:
+            if radar_action[ibin] == interference_state[ibin]:
                 bin.set_color('r')
                 int_bin.set_color('r')
             else:
@@ -151,13 +151,16 @@ def animate_spectrum(tx, int):
         return radar_spectrum.patches
 
     fig, ax = plt.subplots()
-    interference = plt.bar(range(N), np.ones(
-        (N,)), width=1, edgecolor='k', color='g')
+    plt.xlabel('Frequency (MHz)')
+    plt.ylabel('State')
+    subband_bw_mhz = subband_bw / 1e6
+    interference = plt.bar(np.arange(N)*subband_bw_mhz, np.ones(
+        (N,)), width=subband_bw_mhz, edgecolor='k', color='g', align='edge')
     radar_spectrum = plt.bar(
-        range(N), np.ones((N,)), width=1, edgecolor='k', color='b')
+        np.arange(N)*subband_bw_mhz, np.ones((N,)), width=subband_bw_mhz,
+        edgecolor='k', color='b', align='edge')
     anim = animation.FuncAnimation(
-        fig, animate, tx.shape[0], repeat=False, blit=True)
-    # plt.show()
+        fig, animate, tx_history.shape[0], repeat=False, blit=True)
     anim.save('test.mp4')
 
 
@@ -181,7 +184,7 @@ A = actions.shape[0]
 T = np.zeros((A, S, S))
 R = np.zeros((A, S, S))
 
-num_train = int(1e3)
+num_train = int(5e3)
 num_test = int(1e2)
 time = np.linspace(0, 1500, 25)
 # Time step for the simulation
@@ -245,7 +248,7 @@ for itest in range(num_test):
     # Randomly select a starting position and target velocity
     target.position = np.random.rand()*(max(r)-min(r)) + min(r)
     target.velocity = np.random.rand()*(max(v)-min(v)) + min(v)
-    
+
     tx_history = np.empty((0, N))
     interference_history = np.zeros((0, N))
     for itime in range(time.shape[0]):
@@ -277,6 +280,7 @@ for itest in range(num_test):
         new_interference_state = comms.state_ind
         new_state = new_pos_state*nu * \
             (2**N) + new_vel_state*(2**N) + new_interference_state
+
 current_reward = np.mean(current_reward, axis=1)
 current_sinr = np.mean(current_sinr, axis=1)
 
