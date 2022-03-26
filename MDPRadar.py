@@ -11,7 +11,10 @@ import itertools
 from sklearn.preprocessing import normalize
 import matplotlib.pyplot as plt
 from matplotlib import animation
-from abc import ABC, abstractmethod
+from radar import *
+from interference import *
+from target import *
+
 
 # %% [markdown]
 #   ## Radar Environment
@@ -41,165 +44,6 @@ from abc import ABC, abstractmethod
 # %% [markdown]
 #   For this simple script, only 1D range and velocity will be considered.
 #
-
-# %% [markdown]
-#   ## Simulation Objects
-#
-
-# %%
-
-
-class Radar:
-    """Monostatic radar object"""
-
-    def __init__(self, position=np.zeros((3,)), prf=1e3, center_freq=10e9,
-                 tx_gain=100, tx_power=100, samp_rate=1e6, num_pulse_cpi=128, noise_fig=5, T0=270):
-        self.position = np.array(position)
-        self.prf = prf
-        self.center_freq = center_freq
-        self.tx_gain = tx_gain
-        self.noise_fig = noise_fig
-        self.T0 = T0
-        # Assume monostatic
-        self.rx_gain = tx_gain
-        self.tx_power = tx_power
-        self.samp_rate = samp_rate
-        self.num_pulse_cpi = num_pulse_cpi
-        # Derived parameters
-        self.lambda0 = sc.c / center_freq
-        self.max_range = sc.c/(2*prf)
-        self.max_doppler = prf/2
-
-        self.action = np.array([])
-
-    def rx_power(self, target):
-        R = np.linalg.norm(target.position - self.position)
-        Pr = self.tx_power*self.tx_gain*self.rx_gain*self.lambda0**2 * \
-            target.rcs/((4*sc.pi)**3*R**4)
-        return Pr
-
-    def SINR(self, target, interference, wave):
-        noise_power = sc.k*self.T0*self.samp_rate*self.noise_fig
-        # Interference power only contributes to SINR if it is in the same
-        # frequency band
-        if sum(self.action*interference.current_state) > 0:
-            interference_power = interference.tx_power
-        else:
-            interference_power = 0
-        sinr = self.rx_power(target) / (noise_power + interference_power)
-        # SINR after pulse compression and coherent integration
-        sinr *= self.num_pulse_cpi * (wave.pulsewidth*wave.bandwidth)
-        sinr = 10*np.log10(sinr)
-
-        return sinr
-
-
-class Waveform:
-    """Linear FM Waveform object"""
-
-    def __init__(self, bandwidth, pulsewidth):
-        self.bandwidth = bandwidth
-        self.pulsewidth = pulsewidth
-
-
-class Target:
-    """Point target object"""
-
-    def __init__(self, position, velocity, rcs):
-        """Instantiate a target object
-
-        Args:
-            position (ndarray): A vector of the XYZ position of the target in an
-            arbitrary coordinate system
-            velocity (ndarray): A vector of the XYZ velocity of the target in an
-            arbitrary coordinate system
-            rcs (float): The radar cross section of the target (m^2) 
-        """
-        self.position = np.array(position)
-        self.velocity = np.array(velocity)
-        self.rcs = rcs
-
-    def step(self, dt):
-        """Update the target motion profile
-
-        Args:
-            dt (float): Time change since last step
-        """
-        self.position += self.velocity*dt
-
-
-class Interference(ABC):
-    """Interference object base class"""
-
-    def __init__(self, tx_power, states, state_ind):
-        """Instantiate a new interference object
-
-        Args:
-            tx_power (float): Transmit power of the interference AT THE RADAR RECEIVER.
-            Therefore, this is a very small value.
-            TODO: Make this the actual transmitted power, then use scenario
-            geometry to compute the power at the radar receiver. 
-
-            states (_type_, optional): A matrix of all possible transmission
-            frequencies in a discretized spectrum, where each row is a possible
-            state. 
-            Defaults to np.array([]).
-
-            state_ind (int, optional): The row index of the current state in the
-            states matrix.
-            Defaults to 0.
-        """
-        self.tx_power = tx_power
-        self.states = states
-        self.state_ind = state_ind
-        self.current_state = states[state_ind]
-
-    @abstractmethod
-    def step(self):
-        """ 
-        Define the frequency hopping behavior of the interference at each time step
-        """
-        pass
-
-
-class ConstantInterference(Interference):
-    """Constant interference object.
-
-    This interferer transmits at a single frequency pattern for the entire simulation
-
-    Args:
-        Interference: Abstract interference parent class
-    """
-
-    def __init__(self, tx_power=0, states=np.array([]), state_ind=0):
-        super(ConstantInterference, self).__init__(tx_power, states, state_ind)
-
-    def step(self):
-        """
-        Continue transmitting at the same frequency
-        """
-        pass
-
-# class PulsedInterference:
-#     """
-#     Interference that turns on and off every iteration, but stays in the same
-#     frequency band
-#     """
-
-#     def __init__(self, inr=14, states=np.array([]), state_ind=0):
-#         # ConstantInterference-to-noise ratio at the radar receiver. To simplify the
-#         # scenario, this is position-independent
-#         self.inr = inr
-#         self.states = states
-#         self.state_ind = state_ind
-#         self.state = states[state_ind]
-
-#     def step(self):
-#         if np.sum(self.state) == 0:
-#             self.state = self.states[self.state_ind]
-#         else:
-#             self.state = self.states[0]
-
 
 # %% [markdown]
 #   ### Interference Environment
@@ -399,11 +243,9 @@ current_sinr = np.zeros((time.shape[0], num_test))
 for itest in range(num_test):
     # Select a NEW trajectory that was not used for training
     # Randomly select a starting position and target velocity
-    target.position = np.random.choice(r)
-    target.velocity = np.random.choice(v)
-    # Add a gaussian perturbance to the position and velocity
-    target.position += np.random.randn()
-    target.velocity += np.random.randn()
+    target.position = np.random.rand()*(max(r)-min(r)) + min(r)
+    target.velocity = np.random.rand()*(max(v)-min(v)) + min(v)
+    
     tx_history = np.empty((0, N))
     interference_history = np.zeros((0, N))
     for itime in range(time.shape[0]):
