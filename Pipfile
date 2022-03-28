@@ -1,0 +1,22 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+numpy = "*"
+scipy = "*"
+ipykernel = "*"
+autopep8 = "*"
+sklearn = "*"
+matplotlib = "*"
+pymdptoolbox = "*"
+
+[dev-packages]
+ipykernel = "*"
+
+[requires]
+python_version = "3"
+
+[pipenv]
+allow_prereleases = true
