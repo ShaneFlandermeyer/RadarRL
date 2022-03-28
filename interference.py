@@ -41,8 +41,6 @@ class ConstantInterference(Interference):
 
     This interferer transmits at a single frequency pattern for the entire simulation
 
-    Args:
-        Interference: Abstract interference parent class
     """
 
     def __init__(self, tx_power=0, states=np.array([]), state_ind=0):
@@ -60,15 +58,13 @@ class IntermittentInterference(Interference):
 
     This interference transmits in a single pre-defined frequency band, but
     toggles on and off with a user-defined probability at every time step.
-
-    Args:
-        Interference: Abstract interference parent class
     """
 
     def __init__(self, tx_power=0, states=np.array([]), state_ind=0, transition_prob=0.1):
-        super(IntermittentInterference, self).__init__(tx_power, states, state_ind)
+        super(IntermittentInterference, self).__init__(
+            tx_power, states, state_ind)
         self.transition_prob = transition_prob
-        self.transition_prob = transition_prob
+        self.original_state_ind = state_ind
         self.on = 1
 
     def step(self):
@@ -76,6 +72,38 @@ class IntermittentInterference(Interference):
         Transition on/off with a constant probability
         """
         if np.random.rand() < self.transition_prob:
-            self.on = not self.on
+            self.on = int(not self.on)
         # Determine the state based on the transition probability
-        self.current_state = self.states[self.state_ind] * int(self.on)
+        # If the interference is on, the state is the original state. Otherwise,
+        # it is zero
+        self.state_ind = self.original_state_ind * self.on
+        self.current_state = self.states[self.state_ind]
+
+
+class HoppingInterference():
+    """Frequency-hopping interference object.
+
+    Repeatedly hops frequency bins in a pre-defined pattern
+    """
+
+    def __init__(self, pattern, tx_power, states):
+        """Create a HoppingInterference object
+
+        Args:
+            pattern: Numpy array of state indices defining the hopping pattern
+            of the emitter
+            tx_power: Transmit power (W)
+            states: Numpy array of all possible interference states
+        """
+        self.pattern = pattern
+        self.tx_power = tx_power
+        self.states = states
+        self.pattern_ind = 0
+        self.state_ind = pattern[0]
+        self.current_state = self.states[self.state_ind]
+
+    def step(self):
+        """Step to the next frequency in the sequence, restarting if the end is reached"""
+        self.pattern_ind = (self.pattern_ind + 1) % len(self.pattern)
+        self.state_ind = self.pattern[self.pattern_ind]
+        self.current_state = self.states[self.state_ind]

@@ -58,8 +58,10 @@ channel = np.zeros((N,))
 Theta = np.array(list(itertools.product([0, 1], repeat=N)))
 # Interfering system
 interference_state = 1
-comms = IntermittentInterference(
-    tx_power=4.6e-13, states=Theta, state_ind=interference_state, transition_prob=0.9)
+comms = HoppingInterference(pattern=np.array(
+    [1, 2]), tx_power=4.6e-13, states=Theta)
+# comms = IntermittentInterference(
+# tx_power=4.6e-13, states=Theta, state_ind=interference_state, transition_prob=0)
 
 
 # %% [markdown]
@@ -95,8 +97,6 @@ target = Target(position=[], velocity=[], rcs=0.1)
 
 # %%
 
-# TODO: Formulate a reward structure in terms of collisions and missed
-# opportunities
 def reward(radar_state, interference_state):
     r = 0
     # Number of collisions with the interference
@@ -105,7 +105,8 @@ def reward(radar_state, interference_state):
     num_subband = np.sum(radar_state)
     # Number of missed opportunities for radar transmission, where no
     # interference exists but the radar did not transmit there
-    num_missed_opportunity = np.sum((radar_state ==0) & (interference_state == 0))
+    num_missed_opportunity = np.sum(
+        (radar_state == 0) & (interference_state == 0))
 
     if (num_collision > 0):
         r += -45*num_collision
@@ -201,8 +202,8 @@ A = actions.shape[0]
 T = np.zeros((A, S, S))
 R = np.zeros((A, S, S))
 
-num_train = int(5e3)
-num_test = int(1e2)
+num_train = int(1e3)
+num_test = int(1e0)
 time = np.linspace(0, 1500, 25)
 # Time step for the simulation
 dt = time[1] - time[0]
@@ -290,7 +291,7 @@ for itest in range(num_test):
         current_sinr[itime, itest] = sinr
         if itime > 0:
             current_reward[itime, itest] = current_reward[itime -
-                                                          1, itest] + reward(sinr, np.sum(radar.action))
+                                                          1, itest] + reward(radar.action, comms.current_state)
         # Determine the new state
         new_pos_state = np.digitize(target.position, r)-1
         new_vel_state = np.digitize(target.velocity, v)-1
@@ -308,6 +309,7 @@ plt.figure()
 plt.plot(time, current_reward, '.-')
 plt.xlabel('Time (s)')
 plt.ylabel('Average Cumulative Reward')
+plt.savefig('reward')
 
 plt.figure()
 plt.plot(time, current_sinr, '.-')
