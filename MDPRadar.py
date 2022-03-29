@@ -1,6 +1,6 @@
 # %% [markdown]
 #    # Final Project
-# 
+#
 
 # %%
 import mdptoolbox
@@ -14,32 +14,33 @@ from matplotlib import animation
 from radar import *
 from interference import *
 from target import *
+from waveform import *
 
 # %% [markdown]
 #    ## Radar Environment
-# 
+#
 
 # %% [markdown]
 #    The radar environment is defined by a set of possible postion states
 #    $\mathcal{P}$ and a set of velocity states $\mathcal{V}$.
-# 
+#
 #    $\mathcal{P} = \{\mathbf{r_1}, \mathbf{r_2}, \dots, \mathbf{r_\rho}\}$
-# 
+#
 #    $\mathcal{V} = \{\mathbf{v_1}, \mathbf{v_2}, \dots, \mathbf{v_\nu}\}$
-# 
+#
 #    where $\rho$ is the number of possible position states and $\nu$ is the number
 #    of possible velocities.
-# 
+#
 #    Each $\mathbf{r_i}, \mathbf{v_i}$ are 3-dimensional row vectors
-# 
+#
 #    $\mathbf{r_i} = \left[r_x, r_y, r_z \right]$
-# 
+#
 #    $\mathbf{v_i} = \left[v_x, v_y, v_z \right]$
-# 
+#
 
 # %% [markdown]
 #    ### Interference Environment
-# 
+#
 
 # %%
 N = 5
@@ -56,7 +57,8 @@ interference_state = 1
 # comms = IntermittentInterference(
 # tx_power=4.6e-13, states=Theta, state_ind=interference_state,
 # transition_prob=0)
-comms = ConstantInterference(tx_power=4.6e-13, states=Theta,state_ind=interference_state)
+comms = ConstantInterference(
+    tx_power=4.6e-13, states=Theta, state_ind=interference_state)
 
 # %% [markdown]
 #    ## Simulation Environment
@@ -85,24 +87,23 @@ rho = rho_x*rho_y*rho_z
 rx = np.linspace(-5e3, 5e3, rho_x)
 ry = np.linspace(1e3, 5e3, rho_y)
 rz = np.linspace(0, 0, rho_z)
-# TODO: Rename to P
-r = np.vstack(np.meshgrid(rx,ry,rz)).reshape(3, -1).T
+P = np.vstack(np.meshgrid(rx, ry, rz)).reshape(3, -1).T
 # Number of velocity states
 nu = 10
-# TODO: Rename to V
 V = np.linspace(-1/2, 1/2, nu) * (radar.prf*radar.lambda0/2)
 target = Target(position=[], velocity=[], rcs=0.1)
 
 
 # %%
-plt.plot(r[:,0],r[:,1],'ro',label='Position States')
-plt.plot(radar.position[0],radar.position[1],'b.', label='Radar Position')
+plt.plot(P[:, 0], P[:, 1], 'ro', label='Position States')
+plt.plot(radar.position[0], radar.position[1], 'b.', label='Radar Position')
 
 # %% [markdown]
 #    ### Reward structure
-# 
+#
 
 # %%
+
 
 def reward(radar_state, interference_state):
     r = 0
@@ -166,10 +167,8 @@ def animate_spectrum(tx_history, interference_history):
     anim.save('test.gif')
 
 
-
 # %% [markdown]
 #    ## Train the MDP
-
 # %%
 # Number of possible states
 # For this simulation, the set of possible states denotes all possible
@@ -195,22 +194,17 @@ time = np.linspace(0, 1500, 25)
 dt = time[1] - time[0]
 for itrain in range(num_train):
     # Randomly select a starting position and target velocity
-    target.position = r[np.random.choice(r.shape[0]), :]
+    target.position = P[np.random.choice(P.shape[0]), :]
     target.velocity = np.random.choice(V)
     # Add a gaussian perturbance to the position and velocity
-    # target.position += np.random.randn()
-    target.position[-1] = max(target.position[-1], 0)
+    target.position += np.random.randn()
     target.velocity += np.random.randn()
-
-    # TODO: For the 3D case, the position state corresponds to the closest point
-    # in 3D space
-    np.linalg.norm(target.position - r, keepdims=True, axis=1)
-
-    
+    target.position[-1] = max(target.position[-1], 0)
 
     for t in time:
         # Calculate the initial state
-        old_pos_state = np.linalg.norm(target.position - r,keepdims=True,axis=1).argmin()
+        old_pos_state = np.linalg.norm(
+            target.position - P, keepdims=True, axis=1).argmin()
         old_vel_state = np.digitize(target.velocity, V)-1
         old_interference_state = comms.state_ind
         old_state = old_pos_state*nu * \
@@ -224,7 +218,8 @@ for itrain in range(num_train):
         target.step(dt)
         sinr = radar.SINR(target, comms, wave)
         # Determine the new state
-        new_pos_state = np.linalg.norm(target.position - r,keepdims=True,axis=1).argmin()
+        new_pos_state = np.linalg.norm(
+            target.position - P, keepdims=True, axis=1).argmin()
         new_vel_state = np.digitize(target.velocity, V)-1
         new_interference_state = comms.state_ind
         new_state = new_pos_state*nu * \
@@ -256,14 +251,15 @@ current_sinr = np.zeros((time.shape[0], num_test))
 for itest in range(num_test):
     # Select a NEW trajectory that was not used for training
     # Randomly select a starting position and target velocity
-    target.position = np.random.rand(3)*(np.max(r)-np.min(r)) + np.min(r)
+    target.position = np.random.rand(3)*(np.max(P)-np.min(P)) + np.min(P)
     target.velocity = np.random.rand()*(np.max(V)-np.min(V)) + np.min(V)
 
     tx_history = np.empty((0, N))
     interference_history = np.empty((0, N))
     for itime in range(time.shape[0]):
         # Calculate the initial state
-        old_pos_state = np.linalg.norm(target.position - r,keepdims=True,axis=1).argmin()
+        old_pos_state = np.linalg.norm(
+            target.position - P, keepdims=True, axis=1).argmin()
         old_vel_state = np.digitize(target.velocity, V)-1
         old_interference_state = comms.state_ind
         interference_history = np.append(interference_history, np.reshape(
@@ -285,7 +281,8 @@ for itest in range(num_test):
             current_reward[itime, itest] = current_reward[itime -
                                                           1, itest] + reward(radar.action, comms.current_state)
         # Determine the new state
-        new_pos_state = np.linalg.norm(target.position - r,keepdims=True,axis=1).argmin()
+        new_pos_state = np.linalg.norm(
+            target.position - P, keepdims=True, axis=1).argmin()
         new_vel_state = np.digitize(target.velocity, V)-1
         new_interference_state = comms.state_ind
         new_state = new_pos_state*nu * \
@@ -293,7 +290,6 @@ for itest in range(num_test):
 
 current_reward = np.mean(current_reward, axis=1)
 current_sinr = np.mean(current_sinr, axis=1)
-
 
 
 # %% [markdown]
@@ -312,5 +308,3 @@ plt.xlabel('Time (s)')
 plt.ylabel('Average SINR (dB)')
 plt.savefig('SINR')
 animate_spectrum(tx_history, interference_history)
-
-

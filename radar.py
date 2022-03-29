@@ -45,11 +45,3 @@ class Radar:
         sinr = 10*np.log10(sinr)
 
         return sinr
-
-
-class Waveform:
-    """Linear FM Waveform object"""
-
-    def __init__(self, bandwidth, pulsewidth):
-        self.bandwidth = bandwidth
-        self.pulsewidth = pulsewidth
