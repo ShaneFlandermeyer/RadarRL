@@ -71,7 +71,7 @@ comms = ConstantInterference(
 radar = Radar(position=np.zeros((3,)), prf=2000,
               center_freq=10e9, tx_gain=100, tx_power=1e3, num_pulse_cpi=20)
 # Transmitted waveform (linear FM)
-wave = Waveform(bandwidth=20e6, pulsewidth=10e-6)
+wave = LinearFMWaveform(bandwidth=20e6, pulsewidth=10e-6)
 # Possible actions (assume transmission over contiguous sub-bands)
 actions = np.zeros((0, N))
 for i in range(N):
@@ -89,8 +89,15 @@ ry = np.linspace(1e3, 5e3, rho_y)
 rz = np.linspace(0, 0, rho_z)
 P = np.vstack(np.meshgrid(rx, ry, rz)).reshape(3, -1).T
 # Number of velocity states
-nu = 10
-V = np.linspace(-1/2, 1/2, nu) * (radar.prf*radar.lambda0/2)
+nu_x = 3
+nu_y = 3
+nu_z = 1
+nu = nu_x*nu_y*nu_z
+# NOTE: The min/max velocity I have set in each dimension is completely arbitrary
+vx = np.linspace(-5, 5, nu_x)
+vy = np.linspace(-5, 5, nu_y)
+vz = np.linspace(0, 0, nu_z)
+V = np.vstack(np.meshgrid(vx, vy, vz)).reshape(3, -1).T
 target = Target(position=[], velocity=[], rcs=0.1)
 
 
@@ -188,14 +195,14 @@ T = np.zeros((A, S, S))
 R = np.zeros((A, S, S))
 
 num_train = int(1e3)
-num_test = int(1e0)
+num_test = int(1e2)
 time = np.linspace(0, 1500, 25)
 # Time step for the simulation
 dt = time[1] - time[0]
 for itrain in range(num_train):
     # Randomly select a starting position and target velocity
     target.position = P[np.random.choice(P.shape[0]), :]
-    target.velocity = np.random.choice(V)
+    target.velocity = V[np.random.choice(V.shape[0]), :]
     # Add a gaussian perturbance to the position and velocity
     target.position += np.random.randn()
     target.velocity += np.random.randn()
@@ -205,7 +212,8 @@ for itrain in range(num_train):
         # Calculate the initial state
         old_pos_state = np.linalg.norm(
             target.position - P, keepdims=True, axis=1).argmin()
-        old_vel_state = np.digitize(target.velocity, V)-1
+        old_vel_state = np.linalg.norm(
+            target.velocity - V, keepdims=True, axis=1).argmin()
         old_interference_state = comms.state_ind
         old_state = old_pos_state*nu * \
             (2**N) + old_vel_state*(2**N) + old_interference_state
@@ -220,7 +228,8 @@ for itrain in range(num_train):
         # Determine the new state
         new_pos_state = np.linalg.norm(
             target.position - P, keepdims=True, axis=1).argmin()
-        new_vel_state = np.digitize(target.velocity, V)-1
+        new_vel_state = np.linalg.norm(
+            target.velocity - V, keepdims=True, axis=1).argmin()
         new_interference_state = comms.state_ind
         new_state = new_pos_state*nu * \
             (2**N) + new_vel_state*(2**N) + new_interference_state
@@ -260,7 +269,8 @@ for itest in range(num_test):
         # Calculate the initial state
         old_pos_state = np.linalg.norm(
             target.position - P, keepdims=True, axis=1).argmin()
-        old_vel_state = np.digitize(target.velocity, V)-1
+        old_vel_state = np.linalg.norm(
+            target.velocity - V, keepdims=True, axis=1).argmin()
         old_interference_state = comms.state_ind
         interference_history = np.append(interference_history, np.reshape(
             comms.current_state, (1, N)), axis=0)
@@ -283,7 +293,8 @@ for itest in range(num_test):
         # Determine the new state
         new_pos_state = np.linalg.norm(
             target.position - P, keepdims=True, axis=1).argmin()
-        new_vel_state = np.digitize(target.velocity, V)-1
+        new_vel_state = np.linalg.norm(
+            target.velocity - V, keepdims=True, axis=1).argmin()
         new_interference_state = comms.state_ind
         new_state = new_pos_state*nu * \
             (2**N) + new_vel_state*(2**N) + new_interference_state
