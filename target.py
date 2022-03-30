@@ -16,7 +16,7 @@ class Target:
         self.position = np.array(position)
         self.velocity = np.array(velocity)
         self.rcs = rcs
-
+        
     def step(self, dt):
         """Update the target motion profile
 
