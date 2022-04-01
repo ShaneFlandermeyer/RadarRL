@@ -69,7 +69,7 @@ Theta = np.array(list(itertools.product([0, 1], repeat=N)))
 # Interfering system
 interference_state = 1
 comms = HoppingInterference(pattern=np.array(
-    [2**n for n in range(N)]), tx_power=4.6e-13, states=Theta)
+    [1,2,4,8,16,8,4,2), tx_power=4.6e-13, states=Theta)
 # comms = IntermittentInterference(
 # tx_power=4.6e-13, states=Theta, state_ind=interference_state,
 # transition_prob=0)
@@ -144,33 +144,10 @@ def reward(radar_state, interference_state):
 
     if (num_collision > 0):
         r += -100*num_collision
-    else:
-        r += 10*(num_subband-1)
+    r += 10*(num_subband-1)
     return r
 
     # TODO: Penalize rapid waveform changes
-
-
-# %%
-def reward(radar_state, interference_state):
-    r = 0
-    # Number of collisions with the interference
-    num_collision = np.sum(np.equal(radar_state,1) & (radar_state == interference_state))
-    # Number of sub-bands utilized by the radar
-    num_subband = np.sum(radar_state)
-    # Number of missed opportunities for radar transmission, where no
-    # interference exists but the radar did not transmit there
-    num_missed_opportunity = np.sum(
-        (radar_state == 0) & (interference_state == 0))
-
-    if (num_collision > 0):
-        r += -45*num_collision
-    else:
-        r += 10*(num_subband-1)
-    return r
-
-    # TODO: Penalize rapid waveform changes
-
 
 
 # %%
@@ -227,7 +204,7 @@ R = np.zeros((A, S, S))
 
 num_train = int(1e3)
 num_test = int(1)
-time = np.linspace(0, 1500, len(comms.pattern))
+time = np.linspace(0, 1500, len(comms.pattern)*5)
 # Time step for the simulation
 dt = time[1] - time[0]
 for itrain in range(num_train):
