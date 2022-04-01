@@ -69,7 +69,7 @@ Theta = np.array(list(itertools.product([0, 1], repeat=N)))
 # Interfering system
 interference_state = 1
 comms = HoppingInterference(pattern=np.array(
-    [1,2,4,8,16,8,4,2), tx_power=4.6e-13, states=Theta)
+    [1,2,4,8,16,8,4,2]), tx_power=4.6e-13, states=Theta)
 # comms = IntermittentInterference(
 # tx_power=4.6e-13, states=Theta, state_ind=interference_state,
 # transition_prob=0)
