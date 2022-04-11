@@ -11,6 +11,7 @@ autopep8 = "*"
 sklearn = "*"
 matplotlib = "*"
 pymdptoolbox = "*"
+pettingzoo = {extras = ["classic"], version = "*"}
 
 [dev-packages]
 ipykernel = "*"
