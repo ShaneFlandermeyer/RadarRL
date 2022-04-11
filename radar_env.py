@@ -6,38 +6,22 @@ from pettingzoo import AECEnv
 from pettingzoo.utils import agent_selector
 from pettingzoo.utils import wrappers
 from pettingzoo.test import api_test
+import matplotlib.pyplot as plt
 
 
 
-# ROCK = 0
-# PAPER = 1
-# SCISSORS = 2
-# NONE = 3
-# MOVES = ["ROCK", "PAPER", "SCISSORS", "None"]
-# NUM_ITERS = 100
-# REWARD_MAP = {
-#     (ROCK, ROCK): (0, 0),
-#     (ROCK, PAPER): (-1, 1),
-#     (ROCK, SCISSORS): (1, -1),
-#     (PAPER, ROCK): (1, -1),
-#     (PAPER, PAPER): (0, 0),
-#     (PAPER, SCISSORS): (-1, 1),
-#     (SCISSORS, ROCK): (-1, 1),
-#     (SCISSORS, PAPER): (1, -1),
-#     (SCISSORS, SCISSORS): (0, 0),
-# }
 N = 5
 MOVES = np.array(list(itertools.product([0, 1], repeat=N)))
 NUM_ITERS = 100
 
 
-def env():
+def RadarEnvironment():
     '''
     The env function often wraps the environment in wrappers by default.
     You can find full documentation for these methods
     elsewhere in the developer documentation.
     '''
-    env = raw_env()
+    env = raw_RadarEnvironment()
     # This wrapper is only for environments which print results to the terminal
     env = wrappers.CaptureStdoutWrapper(env)
     # this wrapper helps error handling for discrete action spaces
@@ -48,7 +32,7 @@ def env():
     return env
 
 
-class raw_env(AECEnv):
+class raw_RadarEnvironment(AECEnv):
     '''
     The metadata holds environment constants. From gym, we inherit the "render_modes",
     metadata which specifies which modes can be put into the render() method.
@@ -222,18 +206,16 @@ class raw_env(AECEnv):
       self.rewards[self.agents[0]] = r
 
 
-env = env()
-
-
+RadarEnvironment = RadarEnvironment()
 def policy(observation, agent):
     action = np.random.randint(0, 2**N)
     return action
 
 # Run a basic simulation
-# env.reset()
-# for agent in env.agent_iter():
-#     observation, reward, done, info = env.last()
-#     action = policy(observation, agent) if not done else None
-#     env.step(action)
-#     env.render()
-#     print(env._cumulative_rewards)
+RadarEnvironment.reset()
+for agent in RadarEnvironment.agent_iter():
+    observation, reward, done, info = RadarEnvironment.last()
+    action = policy(observation, agent) if not done else None
+    RadarEnvironment.step(action)
+    RadarEnvironment.render()
+    print(RadarEnvironment._cumulative_rewards)
