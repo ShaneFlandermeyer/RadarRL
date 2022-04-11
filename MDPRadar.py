@@ -97,7 +97,6 @@ for i in range(N):
     actions = np.append(actions, np.array([np.roll(state, j) for j in
                                            range(N-i)]), axis=0)
 # Number of position states in each dimension
-# TODO: I don't know if these need to exist anymore
 rho_x = 5
 rho_y = 5
 rho_z = 1
