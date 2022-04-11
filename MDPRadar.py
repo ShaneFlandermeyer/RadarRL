@@ -97,7 +97,6 @@ for i in range(N):
     actions = np.append(actions, np.array([np.roll(state, j) for j in
                                            range(N-i)]), axis=0)
 # Number of position states in each dimension
-# TODO: I don't know if these need to exist anymore
 rho_x = 5
 rho_y = 5
 rho_z = 1
@@ -147,31 +146,6 @@ def reward(radar_state, interference_state):
     else:
         r += 10*(num_subband-1)
     return r
-
-    # TODO: Penalize rapid waveform changes
-
-
-# %%
-def reward(radar_state, interference_state):
-    r = 0
-    # Number of collisions with the interference
-    num_collision = np.sum(np.equal(radar_state,1) & (radar_state == interference_state))
-    # Number of sub-bands utilized by the radar
-    num_subband = np.sum(radar_state)
-    # Number of missed opportunities for radar transmission, where no
-    # interference exists but the radar did not transmit there
-    num_missed_opportunity = np.sum(
-        (radar_state == 0) & (interference_state == 0))
-
-    if (num_collision > 0):
-        r += -45*num_collision
-    else:
-        r += 10*(num_subband-1)
-    return r
-
-    # TODO: Penalize rapid waveform changes
-
-
 
 # %%
 def animate_spectrum(tx_history, interference_history):
