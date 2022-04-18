@@ -68,13 +68,10 @@ Theta = np.array(list(itertools.product([0, 1], repeat=N)))
 
 # Interfering system
 interference_state = 1
+# comms = HoppingInterference(pattern=np.array(
+#     [2**n for n in itertools.chain(range(N), range(N-2,0,-1))]), tx_power=4.6e-13, states=Theta)
 comms = HoppingInterference(pattern=np.array(
-    [2**n for n in itertools.chain(range(N), range(N-2,0,-1))]), tx_power=4.6e-13, states=Theta)
-# comms = IntermittentInterference(
-# tx_power=4.6e-13, states=Theta, state_ind=interference_state,
-# transition_prob=0)
-# comms = ConstantInterference(
-#     tx_power=4.6e-13, states=Theta, state_ind=interference_state)
+    [1]), tx_power=4.6e-13, states=Theta)
 
 
 # %% [markdown]
@@ -207,7 +204,7 @@ R = np.zeros((A, S, S))
 
 num_train = int(1e3)
 num_test = int(1e2)
-time = np.linspace(0, 1500, len(comms.pattern)*5)
+time = np.linspace(0, 1500, 20)
 # Time step for the simulation
 dt = time[1] - time[0]
 for itrain in range(num_train):
