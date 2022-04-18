@@ -122,7 +122,12 @@ target = Target(position=[], velocity=[], rcs=0.1)
 # %%
 plt.plot(P[:, 0], P[:, 1], 'ro', label='Position States')
 plt.plot(radar.position[0], radar.position[1], 'b.', label='Radar Position')
-
+plt.xlabel('x (m)')
+plt.ylabel('y (m)')
+plt.rc('font', size=14)          # controls default text sizes
+plt.rc('font', weight='bold')  # controls boldness
+plt.legend(loc='upper right')
+plt.show()
 
 # %% [markdown]
 # ### Reward structure

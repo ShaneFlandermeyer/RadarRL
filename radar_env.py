@@ -61,6 +61,7 @@ class raw_RadarEnvironment(AECEnv):
             2**N) for agent in self.possible_agents}
         self._observation_spaces = {agent: Discrete(
             2**N) for agent in self.possible_agents}
+        
 
     # this cache ensures that same space object is returned for the same agent
     # allows action space seeding to work as expected
@@ -207,8 +208,16 @@ class raw_RadarEnvironment(AECEnv):
 
 
 RadarEnvironment = RadarEnvironment()
+
+pattern = [1,2]
+ind = 0
 def policy(observation, agent):
-    action = np.random.randint(0, 2**N)
+    global ind
+    if agent == "Radar_0":
+        action = np.random.randint(0,2**N)
+    elif agent == "Comms_0":
+        action = pattern[ind % len(pattern)]
+        ind += 1
     return action
 
 # Run a basic simulation
@@ -217,5 +226,9 @@ for agent in RadarEnvironment.agent_iter():
     observation, reward, done, info = RadarEnvironment.last()
     action = policy(observation, agent) if not done else None
     RadarEnvironment.step(action)
-    RadarEnvironment.render()
-    print(RadarEnvironment._cumulative_rewards)
+    if agent == 'Comms_0':
+        RadarEnvironment.render()
+        print(RadarEnvironment._cumulative_rewards)
+
+    
+    
