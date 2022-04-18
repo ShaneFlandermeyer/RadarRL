@@ -69,7 +69,7 @@ Theta = np.array(list(itertools.product([0, 1], repeat=N)))
 # Interfering system
 interference_state = 1
 comms = HoppingInterference(pattern=np.array(
-    [2**n for n in range(N)]), tx_power=4.6e-13, states=Theta)
+    [2**n for n in itertools.chain(range(N), range(N-2,0,-1))]), tx_power=4.6e-13, states=Theta)
 # comms = IntermittentInterference(
 # tx_power=4.6e-13, states=Theta, state_ind=interference_state,
 # transition_prob=0)
@@ -122,7 +122,12 @@ target = Target(position=[], velocity=[], rcs=0.1)
 # %%
 plt.plot(P[:, 0], P[:, 1], 'ro', label='Position States')
 plt.plot(radar.position[0], radar.position[1], 'b.', label='Radar Position')
-
+plt.xlabel('x (m)')
+plt.ylabel('y (m)')
+plt.rc('font', size=14)          # controls default text sizes
+plt.rc('font', weight='bold')  # controls boldness
+plt.legend(loc='upper right')
+# plt.show()
 
 # %% [markdown]
 # ### Reward structure
@@ -140,11 +145,8 @@ def reward(radar_state, interference_state):
     # interference exists but the radar did not transmit there
     num_missed_opportunity = np.sum(
         (radar_state == 0) & (interference_state == 0))
-
-    if (num_collision > 0):
-        r += -100*num_collision
-    else:
-        r += 10*(num_subband-1)
+    r += -30*num_collision
+    r += 10*(num_subband-1)
     return r
 
 # %%
@@ -184,7 +186,7 @@ def animate_spectrum(tx_history, interference_history):
         edgecolor='k', color='b', align='edge')
     anim = animation.FuncAnimation(
         fig, animate, tx_history.shape[0], repeat=False, blit=True)
-    anim.save('test.gif', fps=1)
+    anim.save('./test.gif', fps=1)
 
 
 # %% [markdown]
@@ -192,7 +194,11 @@ def animate_spectrum(tx_history, interference_history):
 
 # %%
 # Number of possible states (here, equal to the number of interference states)
-S = 2**(2*N)
+use_memory = False
+if use_memory:
+    S = 2**(2*N)
+else:
+    S = 2**N
 # Number of possible actions
 A = actions.shape[0]
 # Initialize the transition and reward matrices
@@ -200,8 +206,8 @@ T = np.zeros((A, S, S))
 R = np.zeros((A, S, S))
 
 num_train = int(1e3)
-num_test = int(1)
-time = np.linspace(0, 1500, len(comms.pattern))
+num_test = int(1e2)
+time = np.linspace(0, 1500, len(comms.pattern)*5)
 # Time step for the simulation
 dt = time[1] - time[0]
 for itrain in range(num_train):
@@ -227,8 +233,12 @@ for itrain in range(num_train):
         next_state = (current_state[1], comms.state_ind)
         # We also need the indices of the interference state (with memory) in
         # the Theta array
-        current_state_ind = current_state[0]*(2**N) + current_state[1]
-        next_state_ind = next_state[0]*(2**N) + next_state[1]
+        if use_memory:
+            current_state_ind = current_state[0]*(2**N) + current_state[1]
+            next_state_ind = next_state[0]*(2**N) + next_state[1]
+        else:
+            current_state_ind = next_state[0]
+            next_state_ind = next_state[1]
         T[action_index, current_state_ind, next_state_ind] += 1
         R[action_index, current_state_ind,
             next_state_ind] += reward(radar.action, comms.current_state)
@@ -265,7 +275,10 @@ for itest in range(num_test):
     for itime in range(time.shape[0]):
         # Initial environment state
         current_state = next_state
-        current_state_ind = current_state[0]*(2**N) + current_state[1]
+        if use_memory:
+            current_state_ind = current_state[0]*(2**N) + current_state[1]
+        else:
+            current_state_ind = current_state[1]
         # Select an action from the policy
         radar.action = actions[pi.policy[current_state_ind], :]
 
