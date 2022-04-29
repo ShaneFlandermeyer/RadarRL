@@ -1,6 +1,6 @@
 # %% [markdown]
 # # Final Project
-# 
+#
 
 # %%
 import mdptoolbox
@@ -19,33 +19,33 @@ from waveform import *
 
 # %% [markdown]
 # ### Radar Environment
-# 
+#
 
 # %% [markdown]
 # The radar environment is defined by a set of possible postion states
-# 
+#
 # $\mathcal{P}$ and a set of velocity states $\mathcal{V}$.
-# 
-# 
+#
+#
 # $\mathcal{P} = \{\mathbf{r_1}, \mathbf{r_2}, \dots, \mathbf{r_\rho}\}$
-# 
-# 
+#
+#
 # $\mathcal{V} = \{\mathbf{v_1}, \mathbf{v_2}, \dots, \mathbf{v_\nu}\}$
-# 
-# 
+#
+#
 # where $\rho$ is the number of possible position states and $\nu$ is the number
-# 
+#
 # of possible velocities.
-# 
-# 
+#
+#
 # Each $\mathbf{r_i}, \mathbf{v_i}$ are 3-dimensional row vectors
-# 
-# 
+#
+#
 # $\mathbf{r_i} = \left[r_x, r_y, r_z \right]$
-# 
-# 
+#
+#
 # $\mathbf{v_i} = \left[v_x, v_y, v_z \right]$
-# 
+#
 # **NOTE:** The current iteration of the simulation only considers the frequency
 # environment for the MDP. By not including the target position and velocity, we
 # **significantly** reduce training time and the sample support needed for a good
@@ -55,7 +55,7 @@ from waveform import *
 
 # %% [markdown]
 # ### Interference Environment
-# 
+#
 
 # %%
 N = 5
@@ -69,10 +69,11 @@ Theta = np.array(list(itertools.product([0, 1], repeat=N)))
 # Interfering system
 interference_state = 1
 # comms = HoppingInterference(pattern=np.array(
-#     [2**n for n in itertools.chain(range(N), range(N-2,0,-1))]), tx_power=4.6e-13, states=Theta)
-comms = HoppingInterference(pattern=np.array(
-    [1]), tx_power=4.6e-13, states=Theta)
-
+#     [2**n for n in itertools.chain(range(N), range(N-2, 0, -1))]),
+#     tx_power=4.6e-13, states=Theta)
+seq_length = 50
+comms = HoppingInterference(pattern=np.random.randint(
+    0, Theta.shape[0]-1, seq_length), tx_power=4.6e-13, states=Theta)
 
 # %% [markdown]
 # ## Simulation Environment
@@ -87,7 +88,7 @@ radar = Radar(position=np.zeros((3,)), prf=2000,
 # Transmitted waveform (linear FM)
 wave = LinearFMWaveform(bandwidth=20e6, pulsewidth=10e-6)
 # Possible actions (assume transmission over contiguous sub-bands)
-actions = np.zeros((0, N))
+actions = np.zeros((1, N))
 for i in range(N):
     state = np.zeros((N,))
     state[:i+1] = 1
@@ -115,7 +116,6 @@ V = np.vstack(np.meshgrid(vx, vy, vz)).reshape(3, -1).T
 target = Target(position=[], velocity=[], rcs=0.1)
 
 
-
 # %%
 plt.plot(P[:, 0], P[:, 1], 'ro', label='Position States')
 plt.plot(radar.position[0], radar.position[1], 'b.', label='Radar Position')
@@ -128,9 +128,11 @@ plt.legend(loc='upper right')
 
 # %% [markdown]
 # ### Reward structure
-# 
+#
 
 # %%
+
+
 def reward(radar_state, interference_state):
     r = 0
     # Number of collisions with the interference
@@ -142,11 +144,13 @@ def reward(radar_state, interference_state):
     # interference exists but the radar did not transmit there
     num_missed_opportunity = np.sum(
         (radar_state == 0) & (interference_state == 0))
-    r += -30*num_collision
+    r += -100*num_collision
     r += 10*(num_subband-1)
     return r
 
 # %%
+
+
 def animate_spectrum(tx_history, interference_history):
     # tx: array of radar transmission actions, where each row is the spectrum
     # state for a test run
@@ -175,6 +179,8 @@ def animate_spectrum(tx_history, interference_history):
     fig, ax = plt.subplots()
     plt.xlabel('Frequency (MHz)')
     plt.ylabel('State')
+    plt.rc('font', size=14)          # controls default text sizes
+    plt.rc('font', weight='bold')  # controls boldness
     subband_bw_mhz = subband_bw / 1e6
     interference = plt.bar(np.arange(N)*subband_bw_mhz, np.ones(
         (N,)), width=subband_bw_mhz, edgecolor='k', color='g', align='edge')
@@ -191,7 +197,7 @@ def animate_spectrum(tx_history, interference_history):
 
 # %%
 # Number of possible states (here, equal to the number of interference states)
-use_memory = False
+use_memory = True
 if use_memory:
     S = 2**(2*N)
 else:
@@ -204,6 +210,7 @@ R = np.zeros((A, S, S))
 
 num_train = int(1e3)
 num_test = int(1e2)
+# time = np.linspace(0, 1500, max(20, comms.pattern.shape[0]))
 time = np.linspace(0, 1500, 20)
 # Time step for the simulation
 dt = time[1] - time[0]
@@ -215,6 +222,10 @@ for itrain in range(num_train):
     target.position += np.random.randn()
     target.velocity += np.random.randn()
     target.position[-1] = max(target.position[-1], 0)
+    # Start at a random place in the pattern
+    comms.pattern_ind = np.random.randint(0, comms.pattern.shape[0])
+    comms.state_ind = comms.pattern[comms.pattern_ind]
+    comms.current_state = comms.states[comms.state_ind]
     next_state = (0, comms.state_ind)
     for t in time:
         # Initial environment state
@@ -268,6 +279,9 @@ for itest in range(num_test):
 
     tx_history = np.empty((0, N))
     interference_history = np.empty((0, N))
+    comms.pattern_ind = np.random.randint(0, comms.pattern.shape[0])
+    comms.state_ind = comms.pattern[comms.pattern_ind]
+    comms.current_state = comms.states[comms.state_ind]
     next_state = (0, comms.state_ind)
     for itime in range(time.shape[0]):
         # Initial environment state
@@ -316,6 +330,3 @@ plt.xlabel('Time (s)')
 plt.ylabel('Average SINR (dB)')
 plt.savefig('SINR')
 animate_spectrum(tx_history, interference_history)
-
-
-
