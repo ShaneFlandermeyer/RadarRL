@@ -16,6 +16,7 @@ from keras.layers import Dense, LeakyReLU, Input
 from tensorflow.keras.models import Model
 from radar_env import *
 
+iterations=2500
 def policy(observation, agent):
     '''
     Test function for environment testing.  DQN does not use this function
@@ -68,6 +69,10 @@ def interference(prev_state, pattern, std=None, experiment='sweep'):
          new_ind = 0 if new_ind < 0 else N-1 if new_ind > N-1 else new_ind
          return pattern[new_ind]
         
+def max_reward(state, N):
+    interf_ind = np.argmax(state)
+    span = max(interf_ind,N-interf_ind-1)
+    return (span-1)*10
 
 def build_model(input_size,output_size,dense_layers, activation='elu', lrate=0.001):
     '''
@@ -125,13 +130,15 @@ for r in range(runs):
     
     experiment = 'normal_dist'
     pattern = [1,2,4,8,16]  #interference pattern
-    std = [.6,.3,.2,.4,.5]   #standard deviation for experiment normal_dist
+    # pattern = [1,2,4,8,16,32,64,128,256,512]  #interference pattern
+    std = [.5,.3,.2,.3,.5]   #standard deviation for experiment normal_dist
+    # std = [.5,.3,.2,.3,.5,.5,.3,.2,.3,.5]
     gamma = .9              #discount factor for DQN learning
     eps = 1                 #starting epsilon for greedy epsilon selection
     eps_decay = 0.998       #decay factor for epsilon
     eps_min = .001          #minimum epsilon
-    N=5                     # number of sub-bands
-    lrate = 0.02
+    N= 5                    # number of sub-bands
+    lrate = 0.05
     #build the position/span DQN
     position_model,span_model = build_agent_pair(input_size =N, output_size=N, position_layers=[128,64], 
                                                 span_layers=[128,64], activation='elu', lrate=lrate)
@@ -139,6 +146,7 @@ for r in range(runs):
     reward_cumulative =[]
     state_totals = []
     action_totals = []
+    optimal_reward_totals =[]
     
     #experiment iteration
     for i,agent in enumerate(RadarEnvironment.agent_iter()):
@@ -157,7 +165,7 @@ for r in range(runs):
             # span forward pass Q value list
             Q_span = span_model.predict(np.reshape(in_span,(1,2*N))).tolist()[0]
             #epsilon greeding selection
-            if random.random()<=eps and i<3990: #select random action state
+            if random.random()<=eps and i<2*iterations-1001: #select random action state
                 Ap = random.randrange(1,N)
                 As = random.randrange(1,N)
             else: #select maximum Q value option. 
@@ -184,21 +192,24 @@ for r in range(runs):
             observation, reward, done, info = RadarEnvironment.last()
             obs_list_next = int_to_binlist(observation, N)
             state_totals = np.append(state_totals, obs_list_next)
-            #Forward pass of S_t+1 
-            Q_pos_next = position_model.predict(np.reshape(obs_list_next,(1,N)))
-            in_span_next = [*obs_list, *Q_pos_next.tolist()[0]] 
-            Q_span_next = span_model.predict(np.reshape(in_span_next,(1,2*N)))
-            # set target as previous prediction
-            target_pos = Q_pos
-            # update the selection location with the bellman target
-            target_pos[Ap-1] = reward+ gamma*np.max(Q_pos_next)
-            # set target as previous prediction
-            target_span = Q_span
-            # update the selection location with the bellman target
-            target_span[As-1] = reward+ gamma*np.max(Q_span_next)
-            history_pos = position_model.fit(np.reshape(obs_list,(1,N)), np.reshape(target_pos,(1,N)),epochs=1, verbose=0)
-            history_span = span_model.fit(np.reshape(in_span,(1,2*N)), np.reshape(target_span,(1,N)),epochs=1, verbose=0)
+            if i< 2*iterations-1001:
+                #Forward pass of S_t+1 
+                Q_pos_next = position_model.predict(np.reshape(obs_list_next,(1,N)))
+                in_span_next = [*obs_list, *Q_pos_next.tolist()[0]] 
+                Q_span_next = span_model.predict(np.reshape(in_span_next,(1,2*N)))
+                # set target as previous prediction
+                target_pos = Q_pos
+                # update the selection location with the bellman target
+                target_pos[Ap-1] = reward+ gamma*np.max(Q_pos_next)
+                # set target as previous prediction
+                target_span = Q_span
+                # update the selection location with the bellman target
+                target_span[As-1] = reward+ gamma*np.max(Q_span_next)
+                history_pos = position_model.fit(np.reshape(obs_list,(1,N)), np.reshape(target_pos,(1,N)),epochs=1, verbose=0)
+                history_span = span_model.fit(np.reshape(in_span,(1,2*N)), np.reshape(target_span,(1,N)),epochs=1, verbose=0)
             reward_totals=np.append(reward_totals, reward)
+            optimal_reward=max_reward(obs_list_next,N)
+            optimal_reward_totals = np.append(optimal_reward_totals,optimal_reward)
             reward_cumulative = np.append(reward_cumulative, np.sum(reward_totals))
             if eps<=eps_min:
                 eps=eps_min
@@ -209,24 +220,32 @@ for r in range(runs):
         
         # print('act:%s'%(action))
         if done:
-            action_totals = np.resize(action_totals,(2000,N))           
-            state_totals = np.resize(state_totals,(2000,N))
+            action_totals = np.resize(action_totals,(iterations,N))           
+            state_totals = np.resize(state_totals,(iterations,N))
             plt.figure(2*r+1)
             plt.plot(reward_cumulative)
-            plt.title("Experiment (%s_%s) DQN"%(experiment,r+1))
+            plt.title("Experiment (%s_%s_%s) DQN"%(experiment,N,r+1))
             plt.ylabel('Cumulative Reward')
             plt.xlabel('Epochs')
             plt.grid(True)
             
-            rewards_sum = np.sum(reward_totals.reshape(-1, 5), axis=1)
+            rewards_sum = np.sum(reward_totals.reshape(-1, N), axis=1)
+            optimal_reward_sum = np.sum(optimal_reward_totals.reshape(-1, N), axis=1)
+            mean_reward = np.mean(reward_totals[-500:])
+            std_reward = np.std(reward_totals[-500:])
+            mean_optimal = np.mean(optimal_reward_totals[-500:])
+            std_optimal = np.std(optimal_reward_totals[-500:])
             
             plt.figure(2*r+2) 
-            plt.plot(rewards_sum)
-            plt.title("Experiment (%s_%s) DQN"%(experiment,r+1))
+            plt.plot(rewards_sum, label='DQN',color='r')
+            plt.plot(optimal_reward_sum, label='optimal',color='b')
+            plt.title("Experiment (%s_%s_%s) DQN"%(experiment,N,r+1))
             plt.ylabel('Reward total per pattern cycle')
             plt.xlabel('Pattern cycles')
-            plt.yticks(np.arange(-225,125,25))
+            #plt.yticks(np.arange(-225,125,25))
+            plt.legend()
             plt.grid(True)
+            plt.savefig("Experiment_%s_%s_%s_DQN"%(experiment,N,r+1),bbox_inches='tight')
             
             final_pattern_reward=np.append(final_pattern_reward, rewards_sum[-1])
             results = {}
@@ -234,11 +253,16 @@ for r in range(runs):
             results['rewards_sum'] = rewards_sum
             results['action_totals'] = action_totals
             results['state_totals'] = state_totals
+            results['optimal_rewards'] = optimal_reward_totals
             results['final_rewards_sum'] = rewards_sum[-1]
             with open("%s_%s_%s_results.pkl"%(experiment,N,r+1), "wb") as fp:
                 pickle.dump(results, fp)
             break
 mean_pattern_reward = np.mean(final_pattern_reward)
 std_pattern_reward = np.std(final_pattern_reward)
+
+
+
+
 
             
