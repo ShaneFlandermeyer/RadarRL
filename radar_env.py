@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 N = 5
 MOVES = np.array(list(itertools.product([0, 1], repeat=N)))
-NUM_ITERS = 2000
+NUM_ITERS = 2500
 
 
 def RadarEnvironment():
