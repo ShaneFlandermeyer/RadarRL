@@ -58,6 +58,7 @@ from waveform import *
 #
 
 # %%
+use_memory = True
 N = 5
 channel_bw = 200e6
 subband_bw = channel_bw / N
@@ -67,13 +68,15 @@ channel = np.zeros((N,))
 Theta = np.array(list(itertools.product([0, 1], repeat=N)))
 
 # Interfering system
-# interference_state = 1
+# comms = HoppingInterference(pattern=np.array(
+#     [1]),
+#     tx_power=4.6e-13, states=Theta)
 # comms = HoppingInterference(pattern=np.array(
 #     [2**n for n in itertools.chain(range(N), range(N-2, 0, -1))]),
 #     tx_power=4.6e-13, states=Theta)
-seq_length = 10
+seq_length = 100
 comms = HoppingInterference(pattern=2**(np.random.randint(
-    0, N+1, seq_length)), tx_power=4.6e-13, states=Theta)
+    0, N, seq_length)), tx_power=4.6e-13, states=Theta)
 comms.pattern[comms.pattern == 2**N] -= 1
 
 # %% [markdown]
@@ -206,12 +209,10 @@ def compute_state():
 
 # %%
 # Number of possible states (here, equal to the number of interference states)
-use_memory = True
+# use_memory = False
+S = (2**N)*rho*nu
 if use_memory:
-    S = 2**(2*N)
-else:
-    S = 2**N
-S *= rho*nu
+    S *= 2**N
 # Number of possible actions
 A = actions.shape[0]
 # Initialize the transition and reward matrices
@@ -252,13 +253,14 @@ for itrain in range(num_train):
         comms.step()
         target.step(dt)
         next_state = (current_state[1], compute_state())
-        # If memory is used
         current_state_ind = current_state[1]
         next_state_ind = next_state[1]
+        # If memory is used, need to index into a biggger array
         if use_memory:
             current_state_ind += prev_comms_state*(2**N)*rho*nu
             next_state_ind += current_comms_state*(2**N)*rho*nu
         prev_comms_state = current_comms_state
+        # Update transition and reward estimate
         T[action_index, current_state_ind, next_state_ind] += 1
         R[action_index, current_state_ind,
             next_state_ind] += reward(radar.action, comms.current_state)
@@ -283,6 +285,8 @@ pi.run()
 # %%
 current_reward = np.zeros((time.shape[0], num_test))
 current_sinr = np.zeros((time.shape[0], num_test))
+cumulative_reward = np.zeros((num_test,))
+mean_bw = 0
 for itest in range(num_test):
     # Select a NEW trajectory that was not used for training
     # Randomly select a starting position and target velocity
@@ -294,6 +298,7 @@ for itest in range(num_test):
         target.velocity - V, keepdims=True, axis=1).argmin()
     tx_history = np.empty((0, N))
     interference_history = np.empty((0, N))
+    # Randomly select a starting frequency for the interferer
     comms.pattern_ind = np.random.randint(0, comms.pattern.shape[0])
     comms.state_ind = comms.pattern[comms.pattern_ind]
     comms.current_state = comms.states[comms.state_ind]
@@ -310,12 +315,14 @@ for itest in range(num_test):
 
         # Determine the bandwidth used, then update the interference, position, range, and SINR
         wave.bandwidth = subband_bw*np.sum(radar.action)
+        mean_bw += wave.bandwidth
         prev_comms_state = comms.state_ind
         comms.step()
         target.step(dt)
         if itime > 0:
             current_reward[itime, itest] = current_reward[itime -
                                                           1, itest] + reward(radar.action, comms.current_state)
+        cumulative_reward[itest] += reward(radar.action, comms.current_state)
         next_state = (current_state[1], compute_state())
 
         # Variables for plotting
@@ -326,7 +333,13 @@ for itest in range(num_test):
         sinr = radar.SINR(target, comms, wave)
         current_sinr[itime, itest] = sinr
 
-current_reward = np.mean(current_reward, axis=1)
+# Print RL statistics for report
+mean_reward = np.mean(cumulative_reward)
+mean_bw /= (time.shape[0]*num_test)
+reward_std_dev = np.sqrt(np.var(cumulative_reward))
+print("Mean reward: " + str(mean_reward))
+print("Reward std. dev: " + str(reward_std_dev))
+print("Mean bandwidth: " + str(mean_bw/1e6))
 current_sinr = np.mean(current_sinr, axis=1)
 
 
