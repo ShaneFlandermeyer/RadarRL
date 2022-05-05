@@ -1,6 +1,6 @@
 # %% [markdown]
 # # Final Project
-# 
+#
 
 # %%
 import mdptoolbox
@@ -19,33 +19,33 @@ from waveform import *
 
 # %% [markdown]
 # ### Radar Environment
-# 
+#
 
 # %% [markdown]
 # The radar environment is defined by a set of possible postion states
-# 
+#
 # $\mathcal{P}$ and a set of velocity states $\mathcal{V}$.
-# 
-# 
+#
+#
 # $\mathcal{P} = \{\mathbf{r_1}, \mathbf{r_2}, \dots, \mathbf{r_\rho}\}$
-# 
-# 
+#
+#
 # $\mathcal{V} = \{\mathbf{v_1}, \mathbf{v_2}, \dots, \mathbf{v_\nu}\}$
-# 
-# 
+#
+#
 # where $\rho$ is the number of possible position states and $\nu$ is the number
-# 
+#
 # of possible velocities.
-# 
-# 
+#
+#
 # Each $\mathbf{r_i}, \mathbf{v_i}$ are 3-dimensional row vectors
-# 
-# 
+#
+#
 # $\mathbf{r_i} = \left[r_x, r_y, r_z \right]$
-# 
-# 
+#
+#
 # $\mathbf{v_i} = \left[v_x, v_y, v_z \right]$
-# 
+#
 # **NOTE:** The current iteration of the simulation only considers the frequency
 # environment for the MDP. By not including the target position and velocity, we
 # **significantly** reduce training time and the sample support needed for a good
@@ -55,9 +55,10 @@ from waveform import *
 
 # %% [markdown]
 # ### Interference Environment
-# 
+#
 
 # %%
+use_memory = True
 N = 5
 channel_bw = 200e6
 subband_bw = channel_bw / N
@@ -67,15 +68,16 @@ channel = np.zeros((N,))
 Theta = np.array(list(itertools.product([0, 1], repeat=N)))
 
 # Interfering system
-interference_state = 1
-comms = HoppingInterference(pattern=np.array(
-    [2**n for n in itertools.chain(range(N), range(N-2,0,-1))]), tx_power=4.6e-13, states=Theta)
-# comms = IntermittentInterference(
-# tx_power=4.6e-13, states=Theta, state_ind=interference_state,
-# transition_prob=0)
-# comms = ConstantInterference(
-#     tx_power=4.6e-13, states=Theta, state_ind=interference_state)
-
+# comms = HoppingInterference(pattern=np.array(
+#     [1]),
+#     tx_power=4.6e-13, states=Theta)
+# comms = HoppingInterference(pattern=np.array(
+#     [2**n for n in itertools.chain(range(N), range(N-2, 0, -1))]),
+#     tx_power=4.6e-13, states=Theta)
+seq_length = 100
+comms = HoppingInterference(pattern=2**(np.random.randint(
+    0, N, seq_length)), tx_power=4.6e-13, states=Theta)
+comms.pattern[comms.pattern == 2**N] -= 1
 
 # %% [markdown]
 # ## Simulation Environment
@@ -90,15 +92,15 @@ radar = Radar(position=np.zeros((3,)), prf=2000,
 # Transmitted waveform (linear FM)
 wave = LinearFMWaveform(bandwidth=20e6, pulsewidth=10e-6)
 # Possible actions (assume transmission over contiguous sub-bands)
-actions = np.zeros((0, N))
+actions = np.zeros((1, N))
 for i in range(N):
     state = np.zeros((N,))
     state[:i+1] = 1
     actions = np.append(actions, np.array([np.roll(state, j) for j in
                                            range(N-i)]), axis=0)
 # Number of position states in each dimension
-rho_x = 5
-rho_y = 5
+rho_x = 2
+rho_y = 2
 rho_z = 1
 rho = rho_x*rho_y*rho_z
 rx = np.linspace(-5e3, 5e3, rho_x)
@@ -106,8 +108,8 @@ ry = np.linspace(1e3, 5e3, rho_y)
 rz = np.linspace(0, 0, rho_z)
 P = np.vstack(np.meshgrid(rx, ry, rz)).reshape(3, -1).T
 # Number of velocity states
-nu_x = 3
-nu_y = 3
+nu_x = 2
+nu_y = 2
 nu_z = 1
 nu = nu_x*nu_y*nu_z
 # NOTE: The min/max velocity I have set in each dimension is completely arbitrary
@@ -115,8 +117,7 @@ vx = np.linspace(-5, 5, nu_x)
 vy = np.linspace(-5, 5, nu_y)
 vz = np.linspace(0, 0, nu_z)
 V = np.vstack(np.meshgrid(vx, vy, vz)).reshape(3, -1).T
-target = Target(position=[], velocity=[], rcs=0.1)
-
+target = Target(position=[], velocity=[], rcs=0.1, P=P, V=V)
 
 
 # %%
@@ -131,9 +132,11 @@ plt.legend(loc='upper right')
 
 # %% [markdown]
 # ### Reward structure
-# 
+#
 
 # %%
+
+
 def reward(radar_state, interference_state):
     r = 0
     # Number of collisions with the interference
@@ -145,11 +148,13 @@ def reward(radar_state, interference_state):
     # interference exists but the radar did not transmit there
     num_missed_opportunity = np.sum(
         (radar_state == 0) & (interference_state == 0))
-    r += -30*num_collision
+    r += -45*num_collision
     r += 10*(num_subband-1)
     return r
 
 # %%
+
+
 def animate_spectrum(tx_history, interference_history):
     # tx: array of radar transmission actions, where each row is the spectrum
     # state for a test run
@@ -178,6 +183,8 @@ def animate_spectrum(tx_history, interference_history):
     fig, ax = plt.subplots()
     plt.xlabel('Frequency (MHz)')
     plt.ylabel('State')
+    plt.rc('font', size=14)          # controls default text sizes
+    plt.rc('font', weight='bold')  # controls boldness
     subband_bw_mhz = subband_bw / 1e6
     interference = plt.bar(np.arange(N)*subband_bw_mhz, np.ones(
         (N,)), width=subband_bw_mhz, edgecolor='k', color='g', align='edge')
@@ -188,17 +195,24 @@ def animate_spectrum(tx_history, interference_history):
         fig, animate, tx_history.shape[0], repeat=False, blit=True)
     anim.save('./test.gif', fps=1)
 
+# %%
+
+
+def compute_state():
+    state_ind = comms.state_ind*rho*nu + \
+        target.vel_state_ind*rho + target.pos_state_ind
+    return state_ind
 
 # %% [markdown]
 # ## Train the MDP
 
+
 # %%
 # Number of possible states (here, equal to the number of interference states)
-use_memory = False
+# use_memory = False
+S = (2**N)*rho*nu
 if use_memory:
-    S = 2**(2*N)
-else:
-    S = 2**N
+    S *= 2**N
 # Number of possible actions
 A = actions.shape[0]
 # Initialize the transition and reward matrices
@@ -207,7 +221,7 @@ R = np.zeros((A, S, S))
 
 num_train = int(1e3)
 num_test = int(1e2)
-time = np.linspace(0, 1500, len(comms.pattern)*5)
+time = np.linspace(0, 1500, 20)
 # Time step for the simulation
 dt = time[1] - time[0]
 for itrain in range(num_train):
@@ -215,30 +229,38 @@ for itrain in range(num_train):
     target.position = P[np.random.choice(P.shape[0]), :]
     target.velocity = V[np.random.choice(V.shape[0]), :]
     # Add a gaussian perturbance to the position and velocity
-    target.position += np.random.randn()
+    target.position[:-1] += np.random.randn(2)
     target.velocity += np.random.randn()
-    target.position[-1] = max(target.position[-1], 0)
-    next_state = (0, comms.state_ind)
+    target.pos_state_ind = np.linalg.norm(
+        target.position - P, keepdims=True, axis=1).argmin()
+    target.vel_state_ind = np.linalg.norm(
+        target.velocity - V, keepdims=True, axis=1).argmin()
+    # Start at a random place in the pattern
+    comms.pattern_ind = np.random.randint(0, comms.pattern.shape[0])
+    comms.state_ind = comms.pattern[comms.pattern_ind]
+    comms.current_state = comms.states[comms.state_ind]
+    prev_comms_state = 0
+    next_state = (0, compute_state())
     for t in time:
         # Initial environment state
         current_state = next_state
         # Randomly select a valid action
         action_index = np.random.randint(0, A)
         radar.action = actions[action_index, :]
-
         # Determine the bandwidth used, then update the interference, position, range, and SINR
         wave.bandwidth = subband_bw*np.sum(radar.action)
+        current_comms_state = comms.state_ind
         comms.step()
         target.step(dt)
-        next_state = (current_state[1], comms.state_ind)
-        # We also need the indices of the interference state (with memory) in
-        # the Theta array
+        next_state = (current_state[1], compute_state())
+        current_state_ind = current_state[1]
+        next_state_ind = next_state[1]
+        # If memory is used, need to index into a biggger array
         if use_memory:
-            current_state_ind = current_state[0]*(2**N) + current_state[1]
-            next_state_ind = next_state[0]*(2**N) + next_state[1]
-        else:
-            current_state_ind = next_state[0]
-            next_state_ind = next_state[1]
+            current_state_ind += prev_comms_state*(2**N)*rho*nu
+            next_state_ind += current_comms_state*(2**N)*rho*nu
+        prev_comms_state = current_comms_state
+        # Update transition and reward estimate
         T[action_index, current_state_ind, next_state_ind] += 1
         R[action_index, current_state_ind,
             next_state_ind] += reward(radar.action, comms.current_state)
@@ -263,33 +285,45 @@ pi.run()
 # %%
 current_reward = np.zeros((time.shape[0], num_test))
 current_sinr = np.zeros((time.shape[0], num_test))
+cumulative_reward = np.zeros((num_test,))
+mean_bw = 0
 for itest in range(num_test):
     # Select a NEW trajectory that was not used for training
     # Randomly select a starting position and target velocity
     target.position = np.random.rand(3)*(np.max(P)-np.min(P)) + np.min(P)
     target.velocity = np.random.rand()*(np.max(V)-np.min(V)) + np.min(V)
-
+    target.pos_state_ind = np.linalg.norm(
+        target.position - P, keepdims=True, axis=1).argmin()
+    target.vel_state_ind = np.linalg.norm(
+        target.velocity - V, keepdims=True, axis=1).argmin()
     tx_history = np.empty((0, N))
     interference_history = np.empty((0, N))
-    next_state = (0, comms.state_ind)
+    # Randomly select a starting frequency for the interferer
+    comms.pattern_ind = np.random.randint(0, comms.pattern.shape[0])
+    comms.state_ind = comms.pattern[comms.pattern_ind]
+    comms.current_state = comms.states[comms.state_ind]
+    next_state = (0, compute_state())
+    prev_comms_state = 0
     for itime in range(time.shape[0]):
         # Initial environment state
         current_state = next_state
+        current_state_ind = current_state[1]
         if use_memory:
-            current_state_ind = current_state[0]*(2**N) + current_state[1]
-        else:
-            current_state_ind = current_state[1]
+            current_state_ind += prev_comms_state*(2**N)*rho*nu
         # Select an action from the policy
         radar.action = actions[pi.policy[current_state_ind], :]
 
         # Determine the bandwidth used, then update the interference, position, range, and SINR
         wave.bandwidth = subband_bw*np.sum(radar.action)
+        mean_bw += wave.bandwidth
+        prev_comms_state = comms.state_ind
         comms.step()
         target.step(dt)
         if itime > 0:
             current_reward[itime, itest] = current_reward[itime -
                                                           1, itest] + reward(radar.action, comms.current_state)
-        next_state = (current_state[1], comms.state_ind)
+        cumulative_reward[itest] += reward(radar.action, comms.current_state)
+        next_state = (current_state[1], compute_state())
 
         # Variables for plotting
         interference_history = np.append(interference_history, np.reshape(
@@ -299,7 +333,13 @@ for itest in range(num_test):
         sinr = radar.SINR(target, comms, wave)
         current_sinr[itime, itest] = sinr
 
-current_reward = np.mean(current_reward, axis=1)
+# Print RL statistics for report
+mean_reward = np.mean(cumulative_reward)
+mean_bw /= (time.shape[0]*num_test)
+reward_std_dev = np.sqrt(np.var(cumulative_reward))
+print("Mean reward: " + str(mean_reward))
+print("Reward std. dev: " + str(reward_std_dev))
+print("Mean bandwidth: " + str(mean_bw/1e6))
 current_sinr = np.mean(current_sinr, axis=1)
 
 
@@ -319,6 +359,3 @@ plt.xlabel('Time (s)')
 plt.ylabel('Average SINR (dB)')
 plt.savefig('SINR')
 animate_spectrum(tx_history, interference_history)
-
-
-

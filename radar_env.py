@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 N = 5
 MOVES = np.array(list(itertools.product([0, 1], repeat=N)))
-NUM_ITERS = 100
+NUM_ITERS = 2500
 
 
 def RadarEnvironment():
@@ -123,7 +123,7 @@ class raw_RadarEnvironment(AECEnv):
         self.dones = {agent: False for agent in self.agents}
         self.infos = {agent: {} for agent in self.agents}
         self.state = {agent: 0 for agent in self.agents}
-        self.observations = {agent: 0 for agent in self.agents}
+        self.observations = {agent: 1 for agent in self.agents}
         self.num_moves = 0
         '''
         Our agent_selector utility allows easy cyclic stepping through the agents list.
@@ -207,28 +207,30 @@ class raw_RadarEnvironment(AECEnv):
       self.rewards[self.agents[0]] = r
 
 
-RadarEnvironment = RadarEnvironment()
+# RadarEnvironment = RadarEnvironment()
 
-pattern = [1,2]
-ind = 0
-def policy(observation, agent):
-    global ind
-    if agent == "Radar_0":
-        action = np.random.randint(0,2**N)
-    elif agent == "Comms_0":
-        action = pattern[ind % len(pattern)]
-        ind += 1
-    return action
+# pattern = [1,2]
+# ind = 0
+# def policy(observation, agent):
+#     global ind
+#     if agent == "Radar_0":
+#         action = np.random.randint(0,2**N)
+#     elif agent == "Comms_0":
+#         action = pattern[ind % len(pattern)]
+#         ind += 1
+#     return action
 
-# Run a basic simulation
-RadarEnvironment.reset()
-for agent in RadarEnvironment.agent_iter():
-    observation, reward, done, info = RadarEnvironment.last()
-    action = policy(observation, agent) if not done else None
-    RadarEnvironment.step(action)
-    if agent == 'Comms_0':
-        RadarEnvironment.render()
-        print(RadarEnvironment._cumulative_rewards)
+# # Run a basic simulation
+# RadarEnvironment.reset()
+# for agent in RadarEnvironment.agent_iter():
+#     observation, reward, done, info = RadarEnvironment.last()
+#     print('agent:%s'%(agent))
+#     print('obs:%s'%(observation))
+#     action = policy(observation, agent) if not done else None
+#     RadarEnvironment.step(action)
+#     if agent == 'Comms_0':
+#         RadarEnvironment.render()
+#         print(RadarEnvironment._cumulative_rewards)
 
     
     
